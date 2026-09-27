@@ -1,2 +1,2 @@
-// Product functionality will be implemented in a later issue.
-export {};
+export { ProductsContent } from "./components/products-content";
+export type { Product, ProductInput } from "./types/product.types";

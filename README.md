@@ -2,7 +2,7 @@
 
 Aplicación modular de ventas e inventario construida con Next.js, TypeScript, Tailwind CSS y Firebase.
 
-Actualmente incluye autenticación con email y contraseña, perfiles almacenados en Firestore, roles `admin` y `agent`, control de usuarios activos, sesión persistente y protección del dashboard temporal. Los módulos de productos, clientes, inventario, Kardex, reposiciones, ventas y reportes todavía no están implementados.
+Actualmente incluye autenticación con email y contraseña, perfiles almacenados en Firestore, roles `admin` y `agent`, control de usuarios activos, sesión persistente, layout autenticado y gestión del catálogo de productos. Los módulos de clientes, inventario, Kardex, reposiciones, ventas y reportes todavía no están implementados.
 
 ## Requisitos
 
@@ -118,7 +118,7 @@ users/{UID_DEL_ADMIN}
 
 Para crear un agente, repite el proceso usando `role: "agent"`. Para comprobar el rechazo de una cuenta inactiva, cambia `active` a `false`.
 
-El archivo `firestore.rules` permite a cada usuario autenticado leer exclusivamente su propio perfil y bloquea todas las escrituras desde el cliente. Los perfiles deben administrarse desde Firebase Console o desde un backend confiable con Firebase Admin SDK. Publica estas reglas con Firebase CLI desde un proyecto vinculado:
+El archivo `firestore.rules` permite a cada usuario autenticado leer exclusivamente su propio perfil y bloquea las escrituras de perfiles desde el cliente. Para productos, los administradores pueden leer y escribir, los agentes solo pueden leer y el acceso anónimo queda bloqueado. Los perfiles deben administrarse desde Firebase Console o desde un backend confiable con Firebase Admin SDK. Publica estas reglas con Firebase CLI desde un proyecto vinculado:
 
 ```bash
 firebase deploy --only firestore:rules
@@ -138,6 +138,15 @@ firebase deploy --only auth,firestore:rules
 - `/dashboard` no muestra contenido hasta terminar la validación de Auth y Firestore.
 - La persistencia local de Firebase conserva la sesión después de recargar.
 - Los helpers `hasRole`, `isAdmin` e `isAgent` centralizan la comprobación de roles.
+
+## Gestión de productos
+
+- La ruta `/products` está disponible únicamente para administradores.
+- El módulo permite crear, editar, buscar, filtrar, desactivar y reactivar productos; no realiza borrado físico.
+- El SKU se normaliza eliminando espacios externos y convirtiéndolo a mayúsculas.
+- La unicidad se garantiza atómicamente mediante `product_skus/{SKU_NORMALIZADO}` junto con el documento `products/{productId}`.
+- Los cambios de SKU crean el nuevo índice y eliminan el anterior dentro de la misma transacción.
+- El producto contiene `minimumStock`, pero no contiene stock actual. Las existencias se incorporarán en el módulo de inventario.
 
 ## Ejecución
 

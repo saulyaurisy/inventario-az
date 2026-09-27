@@ -2,9 +2,118 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function currentUser() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isActiveRole(role) {
+      return isSignedIn()
+        && currentUser().active == true
+        && currentUser().role == role;
+    }
+
+    function isAdmin() {
+      return isActiveRole('admin');
+    }
+
+    function isAgent() {
+      return isActiveRole('agent');
+    }
+
+    function hasValidProductShape(data) {
+      return data.keys().hasAll([
+          'sku',
+          'name',
+          'category',
+          'salePrice',
+          'costPrice',
+          'minimumStock',
+          'active',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'sku',
+          'internalCode',
+          'name',
+          'description',
+          'category',
+          'salePrice',
+          'costPrice',
+          'minimumStock',
+          'active',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.sku is string
+        && data.sku.size() > 0
+        && data.sku.size() <= 100
+        && data.sku.matches('^[A-Z0-9][A-Z0-9._ -]*$')
+        && data.name is string
+        && data.name.size() > 0
+        && data.category is string
+        && data.category.size() > 0
+        && data.salePrice is number
+        && data.salePrice >= 0
+        && data.costPrice is number
+        && data.costPrice >= 0
+        && data.minimumStock is int
+        && data.minimumStock >= 0
+        && data.active is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && (!data.keys().hasAny(['internalCode']) || data.internalCode is string)
+        && (!data.keys().hasAny(['description']) || data.description is string);
+    }
+
     match /users/{userId} {
-      allow read: if request.auth != null && request.auth.uid == userId;
+      allow read: if isSignedIn() && request.auth.uid == userId;
       allow write: if false;
+    }
+
+    match /products/{productId} {
+      allow read: if isAdmin() || isAgent();
+
+      allow create: if isAdmin()
+        && hasValidProductShape(request.resource.data)
+        && existsAfter(/databases/$(database)/documents/product_skus/$(request.resource.data.sku))
+        && getAfter(/databases/$(database)/documents/product_skus/$(request.resource.data.sku)).data.productId == productId
+        && getAfter(/databases/$(database)/documents/product_skus/$(request.resource.data.sku)).data.sku == request.resource.data.sku;
+
+      allow update: if isAdmin()
+        && hasValidProductShape(request.resource.data)
+        && request.resource.data.createdAt == resource.data.createdAt
+        && existsAfter(/databases/$(database)/documents/product_skus/$(request.resource.data.sku))
+        && getAfter(/databases/$(database)/documents/product_skus/$(request.resource.data.sku)).data.productId == productId
+        && getAfter(/databases/$(database)/documents/product_skus/$(request.resource.data.sku)).data.sku == request.resource.data.sku
+        && (
+          request.resource.data.sku == resource.data.sku
+          || !existsAfter(/databases/$(database)/documents/product_skus/$(resource.data.sku))
+        );
+
+      allow delete: if false;
+    }
+
+    match /product_skus/{skuId} {
+      allow read: if isAdmin();
+
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasAll(['productId', 'sku'])
+        && request.resource.data.keys().hasOnly(['productId', 'sku'])
+        && request.resource.data.productId is string
+        && request.resource.data.sku == skuId
+        && existsAfter(/databases/$(database)/documents/products/$(request.resource.data.productId))
+        && getAfter(/databases/$(database)/documents/products/$(request.resource.data.productId)).data.sku == skuId;
+
+      allow update: if false;
+
+      allow delete: if isAdmin()
+        && existsAfter(/databases/$(database)/documents/products/$(resource.data.productId))
+        && getAfter(/databases/$(database)/documents/products/$(resource.data.productId)).data.sku != skuId;
     }
 
     match /{document=**} {
