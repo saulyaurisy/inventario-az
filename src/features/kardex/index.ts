@@ -1,2 +1,7 @@
-// Kardex functionality will be implemented in a later issue.
-export {};
+export { KardexContent } from "./components/kardex-content";
+export type {
+  KardexFilters,
+  KardexMovement,
+  KardexRow,
+  KardexSummary,
+} from "./types/kardex.types";

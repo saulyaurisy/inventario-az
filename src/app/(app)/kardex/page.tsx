@@ -1,10 +1,10 @@
-import { ModulePlaceholder } from "@/components/layout";
+import { RoleRoute } from "@/features/auth";
+import { KardexContent } from "@/features/kardex";
 
 export default function KardexPage() {
   return (
-    <ModulePlaceholder
-      description="Trazabilidad cronológica de movimientos de inventario."
-      title="Kardex"
-    />
+    <RoleRoute allowedRoles={["admin", "agent"]}>
+      <KardexContent />
+    </RoleRoute>
   );
 }
