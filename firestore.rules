@@ -24,6 +24,10 @@ service cloud.firestore {
       return isActiveRole('agent');
     }
 
+    function isStaff() {
+      return isAdmin() || isAgent();
+    }
+
     function hasValidProductShape(data) {
       return data.keys().hasAll([
           'sku',
@@ -70,6 +74,53 @@ service cloud.firestore {
         && (!data.keys().hasAny(['description']) || data.description is string);
     }
 
+    function hasValidClientShape(data) {
+      return data.keys().hasAll([
+          'documentType',
+          'documentNumber',
+          'normalizedDocumentNumber',
+          'name',
+          'active',
+          'createdBy',
+          'updatedBy',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'documentType',
+          'documentNumber',
+          'normalizedDocumentNumber',
+          'name',
+          'phone',
+          'email',
+          'address',
+          'notes',
+          'active',
+          'createdBy',
+          'updatedBy',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.documentType in ['DNI', 'RUC', 'CE', 'OTHER']
+        && data.documentNumber is string
+        && data.documentNumber == data.normalizedDocumentNumber
+        && data.normalizedDocumentNumber is string
+        && data.normalizedDocumentNumber.size() > 0
+        && data.normalizedDocumentNumber.size() <= 100
+        && data.normalizedDocumentNumber.matches('^[A-Z0-9][A-Z0-9._ -]*$')
+        && data.name is string
+        && data.name.size() > 0
+        && data.active is bool
+        && data.createdBy is string
+        && data.updatedBy is string
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && (!data.keys().hasAny(['phone']) || data.phone is string)
+        && (!data.keys().hasAny(['email']) || data.email is string)
+        && (!data.keys().hasAny(['address']) || data.address is string)
+        && (!data.keys().hasAny(['notes']) || data.notes is string);
+    }
+
     match /users/{userId} {
       allow read: if isSignedIn() && request.auth.uid == userId;
       allow write: if false;
@@ -114,6 +165,56 @@ service cloud.firestore {
       allow delete: if isAdmin()
         && existsAfter(/databases/$(database)/documents/products/$(resource.data.productId))
         && getAfter(/databases/$(database)/documents/products/$(resource.data.productId)).data.sku != skuId;
+    }
+
+    match /clients/{clientId} {
+      allow read: if isStaff();
+
+      allow create: if isStaff()
+        && hasValidClientShape(request.resource.data)
+        && request.resource.data.active == true
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.updatedBy == request.auth.uid
+        && existsAfter(/databases/$(database)/documents/client_documents/$(request.resource.data.documentType + '_' + request.resource.data.normalizedDocumentNumber))
+        && getAfter(/databases/$(database)/documents/client_documents/$(request.resource.data.documentType + '_' + request.resource.data.normalizedDocumentNumber)).data.clientId == clientId
+        && getAfter(/databases/$(database)/documents/client_documents/$(request.resource.data.documentType + '_' + request.resource.data.normalizedDocumentNumber)).data.documentType == request.resource.data.documentType
+        && getAfter(/databases/$(database)/documents/client_documents/$(request.resource.data.documentType + '_' + request.resource.data.normalizedDocumentNumber)).data.documentNumber == request.resource.data.normalizedDocumentNumber;
+
+      allow update: if isStaff()
+        && hasValidClientShape(request.resource.data)
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.updatedBy == request.auth.uid
+        && existsAfter(/databases/$(database)/documents/client_documents/$(request.resource.data.documentType + '_' + request.resource.data.normalizedDocumentNumber))
+        && getAfter(/databases/$(database)/documents/client_documents/$(request.resource.data.documentType + '_' + request.resource.data.normalizedDocumentNumber)).data.clientId == clientId
+        && (
+          request.resource.data.documentType == resource.data.documentType
+            && request.resource.data.normalizedDocumentNumber == resource.data.normalizedDocumentNumber
+          || !existsAfter(/databases/$(database)/documents/client_documents/$(resource.data.documentType + '_' + resource.data.normalizedDocumentNumber))
+        );
+
+      allow delete: if false;
+    }
+
+    match /client_documents/{documentKey} {
+      allow read: if isStaff();
+
+      allow create: if isStaff()
+        && request.resource.data.keys().hasAll(['clientId', 'documentType', 'documentNumber'])
+        && request.resource.data.keys().hasOnly(['clientId', 'documentType', 'documentNumber'])
+        && request.resource.data.clientId is string
+        && request.resource.data.documentType in ['DNI', 'RUC', 'CE', 'OTHER']
+        && request.resource.data.documentNumber is string
+        && documentKey == request.resource.data.documentType + '_' + request.resource.data.documentNumber
+        && existsAfter(/databases/$(database)/documents/clients/$(request.resource.data.clientId))
+        && getAfter(/databases/$(database)/documents/clients/$(request.resource.data.clientId)).data.documentType == request.resource.data.documentType
+        && getAfter(/databases/$(database)/documents/clients/$(request.resource.data.clientId)).data.normalizedDocumentNumber == request.resource.data.documentNumber;
+
+      allow update: if false;
+
+      allow delete: if isStaff()
+        && existsAfter(/databases/$(database)/documents/clients/$(resource.data.clientId))
+        && documentKey != getAfter(/databases/$(database)/documents/clients/$(resource.data.clientId)).data.documentType + '_' + getAfter(/databases/$(database)/documents/clients/$(resource.data.clientId)).data.normalizedDocumentNumber;
     }
 
     match /{document=**} {

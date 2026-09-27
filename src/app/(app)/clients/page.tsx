@@ -1,10 +1,10 @@
-import { ModulePlaceholder } from "@/components/layout";
+import { RoleRoute } from "@/features/auth";
+import { ClientsContent } from "@/features/clients";
 
 export default function ClientsPage() {
   return (
-    <ModulePlaceholder
-      description="Administración de clientes y sus datos comerciales."
-      title="Clientes"
-    />
+    <RoleRoute allowedRoles={["admin", "agent"]}>
+      <ClientsContent />
+    </RoleRoute>
   );
 }

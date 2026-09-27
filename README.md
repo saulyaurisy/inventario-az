@@ -2,7 +2,7 @@
 
 Aplicación modular de ventas e inventario construida con Next.js, TypeScript, Tailwind CSS y Firebase.
 
-Actualmente incluye autenticación con email y contraseña, perfiles almacenados en Firestore, roles `admin` y `agent`, control de usuarios activos, sesión persistente, layout autenticado y gestión del catálogo de productos. Los módulos de clientes, inventario, Kardex, reposiciones, ventas y reportes todavía no están implementados.
+Actualmente incluye autenticación con email y contraseña, perfiles almacenados en Firestore, roles `admin` y `agent`, control de usuarios activos, sesión persistente, layout autenticado, gestión del catálogo de productos y directorio de clientes. Los módulos de inventario, Kardex, reposiciones, ventas y reportes todavía no están implementados.
 
 ## Requisitos
 
@@ -118,7 +118,7 @@ users/{UID_DEL_ADMIN}
 
 Para crear un agente, repite el proceso usando `role: "agent"`. Para comprobar el rechazo de una cuenta inactiva, cambia `active` a `false`.
 
-El archivo `firestore.rules` permite a cada usuario autenticado leer exclusivamente su propio perfil y bloquea las escrituras de perfiles desde el cliente. Para productos, los administradores pueden leer y escribir, los agentes solo pueden leer y el acceso anónimo queda bloqueado. Los perfiles deben administrarse desde Firebase Console o desde un backend confiable con Firebase Admin SDK. Publica estas reglas con Firebase CLI desde un proyecto vinculado:
+El archivo `firestore.rules` permite a cada usuario autenticado leer exclusivamente su propio perfil y bloquea las escrituras de perfiles desde el cliente. Para productos, los administradores pueden leer y escribir y los agentes solo pueden leer. En clientes, administradores y agentes autenticados pueden leer y escribir. El acceso anónimo queda bloqueado. Los perfiles deben administrarse desde Firebase Console o desde un backend confiable con Firebase Admin SDK. Publica estas reglas con Firebase CLI desde un proyecto vinculado:
 
 ```bash
 firebase deploy --only firestore:rules
@@ -147,6 +147,16 @@ firebase deploy --only auth,firestore:rules
 - La unicidad se garantiza atómicamente mediante `product_skus/{SKU_NORMALIZADO}` junto con el documento `products/{productId}`.
 - Los cambios de SKU crean el nuevo índice y eliminan el anterior dentro de la misma transacción.
 - El producto contiene `minimumStock`, pero no contiene stock actual. Las existencias se incorporarán en el módulo de inventario.
+
+## Gestión de clientes
+
+- La ruta `/clients` está disponible para administradores y agentes activos.
+- Permite crear, editar, buscar, consultar detalle, desactivar y reactivar clientes; no realiza borrado físico.
+- La unicidad se garantiza por la combinación tipo + documento mediante `client_documents/{TIPO_DOCUMENTO_NORMALIZADO}`.
+- Los números puramente numéricos eliminan espacios internos; otros documentos se recortan, compactan espacios y normalizan a mayúsculas.
+- DNI y CE con el mismo número se consideran identidades distintas porque el tipo forma parte de la clave.
+- `createdBy` y `updatedBy` registran el UID autenticado, y los timestamps provienen del servidor.
+- El detalle incluye una sección visual preparada para historial de compras, sin consultar ni crear ventas.
 
 ## Ejecución
 

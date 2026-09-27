@@ -1,2 +1,6 @@
-// Client functionality will be implemented in a later issue.
-export {};
+export { ClientsContent } from "./components/clients-content";
+export type {
+  Client,
+  ClientDocumentType,
+  ClientInput,
+} from "./types/client.types";
