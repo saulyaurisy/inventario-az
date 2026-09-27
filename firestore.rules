@@ -121,8 +121,97 @@ service cloud.firestore {
         && (!data.keys().hasAny(['notes']) || data.notes is string);
     }
 
+    function hasValidInventoryShape(data) {
+      return data.keys().hasAll([
+          'productId', 'ownerType', 'ownerId', 'quantity',
+          'lastMovementId', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'productId', 'ownerType', 'ownerId', 'quantity',
+          'lastMovementId', 'createdAt', 'updatedAt'
+        ])
+        && data.productId is string
+        && data.ownerType in ['company', 'agent']
+        && data.ownerId is string
+        && data.quantity is int
+        && data.quantity >= 0
+        && data.lastMovementId is string
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function hasValidMovementShape(data) {
+      return data.keys().hasAll([
+          'inventoryId', 'productId', 'ownerType', 'ownerId', 'type',
+          'quantity', 'quantityBefore', 'quantityAfter', 'reason',
+          'createdBy', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'inventoryId', 'productId', 'ownerType', 'ownerId', 'type',
+          'quantity', 'quantityBefore', 'quantityAfter', 'reason',
+          'createdBy', 'createdAt'
+        ])
+        && data.inventoryId is string
+        && data.productId is string
+        && data.ownerType in ['company', 'agent']
+        && data.ownerId is string
+        && data.type in ['initial', 'adjustment_in', 'adjustment_out']
+        && data.quantity is int
+        && data.quantity > 0
+        && data.quantityBefore is int
+        && data.quantityBefore >= 0
+        && data.quantityAfter is int
+        && data.quantityAfter >= 0
+        && data.reason is string
+        && data.reason.size() > 0
+        && data.createdBy is string
+        && data.createdAt is timestamp;
+    }
+
+    function validInventoryOwner(data) {
+      return data.ownerType == 'company' && data.ownerId == 'company'
+        || data.ownerType == 'agent'
+          && exists(/databases/$(database)/documents/users/$(data.ownerId))
+          && get(/databases/$(database)/documents/users/$(data.ownerId)).data.role == 'agent'
+          && get(/databases/$(database)/documents/users/$(data.ownerId)).data.active == true;
+    }
+
+    function validInitialMovement(inventoryId, inventoryData) {
+      let movement = getAfter(/databases/$(database)/documents/inventory_movements/$(inventoryData.lastMovementId)).data;
+      return existsAfter(/databases/$(database)/documents/inventory_movements/$(inventoryData.lastMovementId))
+        && movement.inventoryId == inventoryId
+        && movement.productId == inventoryData.productId
+        && movement.ownerType == inventoryData.ownerType
+        && movement.ownerId == inventoryData.ownerId
+        && movement.type == 'initial'
+        && movement.quantity == inventoryData.quantity
+        && movement.quantityBefore == 0
+        && movement.quantityAfter == inventoryData.quantity
+        && movement.createdBy == request.auth.uid;
+    }
+
+    function validAdjustmentMovement(inventoryId, beforeQuantity, inventoryData) {
+      let movement = getAfter(/databases/$(database)/documents/inventory_movements/$(inventoryData.lastMovementId)).data;
+      return existsAfter(/databases/$(database)/documents/inventory_movements/$(inventoryData.lastMovementId))
+        && movement.inventoryId == inventoryId
+        && movement.productId == inventoryData.productId
+        && movement.ownerType == inventoryData.ownerType
+        && movement.ownerId == inventoryData.ownerId
+        && movement.type in ['adjustment_in', 'adjustment_out']
+        && movement.quantityBefore == beforeQuantity
+        && movement.quantityAfter == inventoryData.quantity
+        && movement.createdBy == request.auth.uid
+        && (
+          movement.type == 'adjustment_in'
+            && movement.quantityAfter == movement.quantityBefore + movement.quantity
+          || movement.type == 'adjustment_out'
+            && movement.quantityAfter == movement.quantityBefore - movement.quantity
+        );
+    }
+
     match /users/{userId} {
-      allow read: if isSignedIn() && request.auth.uid == userId;
+      allow read: if isSignedIn()
+        && (request.auth.uid == userId || isAdmin());
       allow write: if false;
     }
 
@@ -215,6 +304,70 @@ service cloud.firestore {
       allow delete: if isStaff()
         && existsAfter(/databases/$(database)/documents/clients/$(resource.data.clientId))
         && documentKey != getAfter(/databases/$(database)/documents/clients/$(resource.data.clientId)).data.documentType + '_' + getAfter(/databases/$(database)/documents/clients/$(resource.data.clientId)).data.normalizedDocumentNumber;
+    }
+
+    match /inventory/{inventoryId} {
+      allow read: if isAdmin()
+        || isAgent()
+          && resource.data.ownerType == 'agent'
+          && resource.data.ownerId == request.auth.uid;
+
+      allow create: if isAdmin()
+        && hasValidInventoryShape(request.resource.data)
+        && inventoryId == request.resource.data.ownerType + '__' + request.resource.data.ownerId + '__' + request.resource.data.productId
+        && exists(/databases/$(database)/documents/products/$(request.resource.data.productId))
+        && get(/databases/$(database)/documents/products/$(request.resource.data.productId)).data.active == true
+        && validInventoryOwner(request.resource.data)
+        && validInitialMovement(inventoryId, request.resource.data);
+
+      allow update: if isAdmin()
+        && hasValidInventoryShape(request.resource.data)
+        && request.resource.data.productId == resource.data.productId
+        && request.resource.data.ownerType == resource.data.ownerType
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.lastMovementId != resource.data.lastMovementId
+        && validAdjustmentMovement(
+          inventoryId,
+          resource.data.quantity,
+          request.resource.data
+        );
+
+      allow delete: if false;
+    }
+
+    match /inventory_movements/{movementId} {
+      allow read: if isAdmin()
+        || isAgent()
+          && resource.data.ownerType == 'agent'
+          && resource.data.ownerId == request.auth.uid;
+
+      allow create: if isAdmin()
+        && hasValidMovementShape(request.resource.data)
+        && request.resource.data.createdBy == request.auth.uid
+        && existsAfter(/databases/$(database)/documents/inventory/$(request.resource.data.inventoryId))
+        && getAfter(/databases/$(database)/documents/inventory/$(request.resource.data.inventoryId)).data.lastMovementId == movementId
+        && getAfter(/databases/$(database)/documents/inventory/$(request.resource.data.inventoryId)).data.productId == request.resource.data.productId
+        && getAfter(/databases/$(database)/documents/inventory/$(request.resource.data.inventoryId)).data.ownerType == request.resource.data.ownerType
+        && getAfter(/databases/$(database)/documents/inventory/$(request.resource.data.inventoryId)).data.ownerId == request.resource.data.ownerId
+        && getAfter(/databases/$(database)/documents/inventory/$(request.resource.data.inventoryId)).data.quantity == request.resource.data.quantityAfter
+        && (
+          request.resource.data.type == 'initial'
+            && !exists(/databases/$(database)/documents/inventory/$(request.resource.data.inventoryId))
+            && request.resource.data.quantityBefore == 0
+            && request.resource.data.quantityAfter == request.resource.data.quantity
+          || request.resource.data.type in ['adjustment_in', 'adjustment_out']
+            && exists(/databases/$(database)/documents/inventory/$(request.resource.data.inventoryId))
+            && get(/databases/$(database)/documents/inventory/$(request.resource.data.inventoryId)).data.quantity == request.resource.data.quantityBefore
+            && (
+              request.resource.data.type == 'adjustment_in'
+                && request.resource.data.quantityAfter == request.resource.data.quantityBefore + request.resource.data.quantity
+              || request.resource.data.type == 'adjustment_out'
+                && request.resource.data.quantityAfter == request.resource.data.quantityBefore - request.resource.data.quantity
+            )
+        );
+
+      allow update, delete: if false;
     }
 
     match /{document=**} {

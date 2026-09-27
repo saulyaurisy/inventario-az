@@ -1,10 +1,10 @@
-import { ModulePlaceholder } from "@/components/layout";
+import { RoleRoute } from "@/features/auth";
+import { InventoryContent } from "@/features/inventory";
 
 export default function InventoryPage() {
   return (
-    <ModulePlaceholder
-      description="Consulta y control de existencias disponibles."
-      title="Inventario"
-    />
+    <RoleRoute allowedRoles={["admin", "agent"]}>
+      <InventoryContent />
+    </RoleRoute>
   );
 }

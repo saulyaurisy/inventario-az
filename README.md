@@ -2,7 +2,7 @@
 
 Aplicación modular de ventas e inventario construida con Next.js, TypeScript, Tailwind CSS y Firebase.
 
-Actualmente incluye autenticación con email y contraseña, perfiles almacenados en Firestore, roles `admin` y `agent`, control de usuarios activos, sesión persistente, layout autenticado, gestión del catálogo de productos y directorio de clientes. Los módulos de inventario, Kardex, reposiciones, ventas y reportes todavía no están implementados.
+Actualmente incluye autenticación con email y contraseña, perfiles almacenados en Firestore, roles `admin` y `agent`, control de usuarios activos, sesión persistente, layout autenticado, gestión del catálogo de productos, directorio de clientes e inventario por empresa y agente. Los módulos de Kardex completo, reposiciones, ventas y reportes todavía no están implementados.
 
 ## Requisitos
 
@@ -157,6 +157,17 @@ firebase deploy --only auth,firestore:rules
 - DNI y CE con el mismo número se consideran identidades distintas porque el tipo forma parte de la clave.
 - `createdBy` y `updatedBy` registran el UID autenticado, y los timestamps provienen del servidor.
 - El detalle incluye una sección visual preparada para historial de compras, sin consultar ni crear ventas.
+
+## Inventario
+
+- La fuente de verdad del stock es `inventory`; los documentos de `products` continúan sin cantidades.
+- Cada registro usa el ID determinístico `ownerType__ownerId__productId` y guarda `lastMovementId`.
+- El stock inicial y cada ajuste se confirman en una transacción que también crea exactamente un documento inmutable en `inventory_movements`.
+- Las reglas cruzan `lastMovementId`, cantidades anterior/posterior, producto, propietario y autor para impedir escrituras directas de `quantity` o movimientos sueltos.
+- Solo el administrador puede inicializar o ajustar stock. Los agentes consultan únicamente sus propios registros y no pueden escribir.
+- La inicialización exige un producto activo y, para stock de agente, un perfil activo con rol `agent`. Los ajustes posteriores permiten correcciones históricas aunque el producto se desactive.
+- Las salidas nunca pueden dejar cantidad negativa y todas las cantidades se manejan como enteros positivos.
+- Los movimientos recientes son trazabilidad básica para alimentar el Kardex futuro; no se implementan ventas, reposiciones, compras ni transferencias.
 
 ## Ejecución
 
