@@ -6,7 +6,9 @@ export type InventoryOwnerType = "company" | "agent";
 export type InventoryMovementType =
   | "initial"
   | "adjustment_in"
-  | "adjustment_out";
+  | "adjustment_out"
+  | "replenishment_out"
+  | "replenishment_in";
 export type InventoryAdjustmentDirection = "in" | "out";
 export type InventoryStockStatus =
   | "uninitialized"
@@ -36,6 +38,8 @@ export interface InventoryMovement {
   quantityBefore: number;
   quantityAfter: number;
   reason: string;
+  referenceType?: string;
+  referenceId?: string;
   createdBy: string;
   createdAt: Timestamp;
 }

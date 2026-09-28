@@ -1,10 +1,10 @@
-import { ModulePlaceholder } from "@/components/layout";
+import { RoleRoute } from "@/features/auth";
+import { ReplenishmentsContent } from "@/features/replenishments";
 
 export default function ReplenishmentsPage() {
   return (
-    <ModulePlaceholder
-      description="Planificación y seguimiento de reposiciones de stock."
-      title="Reposiciones"
-    />
+    <RoleRoute allowedRoles={["admin", "agent"]}>
+      <ReplenishmentsContent />
+    </RoleRoute>
   );
 }

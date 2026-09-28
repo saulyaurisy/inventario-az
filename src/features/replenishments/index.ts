@@ -1,2 +1,7 @@
-// Replenishment functionality will be implemented in a later issue.
-export {};
+export { ReplenishmentsContent } from "./components/replenishments-content";
+export type {
+  Replenishment,
+  ReplenishmentInput,
+  ReplenishmentItem,
+  ReplenishmentStatus,
+} from "./types/replenishment.types";

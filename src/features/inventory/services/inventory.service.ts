@@ -41,9 +41,13 @@ function isOwnerType(value: unknown): value is InventoryOwnerType {
 }
 
 function isMovementType(value: unknown): value is InventoryMovementType {
-  return ["initial", "adjustment_in", "adjustment_out"].includes(
-    String(value),
-  );
+  return [
+    "initial",
+    "adjustment_in",
+    "adjustment_out",
+    "replenishment_out",
+    "replenishment_in",
+  ].includes(String(value));
 }
 
 function parseInventory(snapshot: DocumentSnapshot): InventoryRecord {
@@ -104,6 +108,12 @@ function parseMovement(snapshot: DocumentSnapshot): InventoryMovement {
     quantityBefore: data.quantityBefore,
     quantityAfter: data.quantityAfter,
     reason: data.reason,
+    ...(typeof data.referenceType === "string"
+      ? { referenceType: data.referenceType }
+      : {}),
+    ...(typeof data.referenceId === "string"
+      ? { referenceId: data.referenceId }
+      : {}),
     createdBy: data.createdBy,
     createdAt: data.createdAt,
   };

@@ -2,7 +2,7 @@
 
 Aplicación modular de ventas e inventario construida con Next.js, TypeScript, Tailwind CSS y Firebase.
 
-Actualmente incluye autenticación con email y contraseña, perfiles almacenados en Firestore, roles `admin` y `agent`, control de usuarios activos, sesión persistente, layout autenticado, gestión del catálogo de productos, directorio de clientes, inventario por empresa y agente, y Kardex de movimientos. Los módulos de reposiciones, ventas y reportes todavía no están implementados.
+Actualmente incluye autenticación con email y contraseña, perfiles almacenados en Firestore, roles `admin` y `agent`, control de usuarios activos, sesión persistente, layout autenticado, gestión del catálogo de productos, directorio de clientes, inventario por empresa y agente, Kardex de movimientos y reposiciones de empresa a agente. Los módulos de ventas y reportes todavía no están implementados.
 
 ## Requisitos
 
@@ -167,7 +167,7 @@ firebase deploy --only auth,firestore:rules
 - Solo el administrador puede inicializar o ajustar stock. Los agentes consultan únicamente sus propios registros y no pueden escribir.
 - La inicialización exige un producto activo y, para stock de agente, un perfil activo con rol `agent`. Los ajustes posteriores permiten correcciones históricas aunque el producto se desactive.
 - Las salidas nunca pueden dejar cantidad negativa y todas las cantidades se manejan como enteros positivos.
-- Los movimientos recientes también alimentan el módulo Kardex; no se implementan ventas, reposiciones, compras ni transferencias.
+- Los movimientos recientes también alimentan el módulo Kardex; no se implementan ventas, compras, devoluciones ni transferencias entre agentes.
 
 ## Kardex
 
@@ -177,6 +177,17 @@ firebase deploy --only auth,firestore:rules
 - Incluye búsqueda, filtros por producto, propietario, tipo y rango de fechas, resumen del período filtrado y detalle inmutable de cada movimiento.
 - La consulta administrativa se limita inicialmente a los 250 movimientos más recientes. Para agentes se aplican los filtros de propietario exigidos por las reglas antes de descargar datos.
 - Los tipos de movimiento se presentan mediante helpers extensibles para incorporar futuros orígenes sin duplicar la fuente histórica.
+
+## Reposiciones
+
+- La ruta `/replenishments` gestiona el flujo `Pendiente → Enviada → Recibida`; una reposición pendiente también puede cancelarse.
+- Solo el administrador crea, edita, cancela y envía. El agente consulta exclusivamente sus reposiciones y confirma la recepción de las que le corresponden.
+- Crear, editar o cancelar no modifica existencias. Enviar descuenta stock de empresa y crea movimientos `replenishment_out`; recibir aumenta stock del agente y crea movimientos `replenishment_in`.
+- Cada transición de stock se ejecuta en una única transacción de Firestore y usa identificadores determinísticos de movimiento, por lo que los reintentos y la doble confirmación no duplican cantidades ni historial.
+- `inventory` e `inventory_movements` continúan siendo las únicas fuentes de stock e historial. Las reposiciones no guardan cantidades paralelas fuera de sus ítems planificados.
+- Para mantener la recepción segura en el cliente bajo los límites de evaluación de reglas de Firestore, cada reposición admite entre 1 y 3 productos distintos. No requiere Functions, backend adicional ni plan Blaze.
+
+> Nota técnica: máximo seguro de 3 productos por reposición con las reglas Firestore actuales.
 
 ## Ejecución
 

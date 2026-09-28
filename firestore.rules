@@ -149,13 +149,16 @@ service cloud.firestore {
         && data.keys().hasOnly([
           'inventoryId', 'productId', 'ownerType', 'ownerId', 'type',
           'quantity', 'quantityBefore', 'quantityAfter', 'reason',
-          'createdBy', 'createdAt'
+          'referenceType', 'referenceId', 'createdBy', 'createdAt'
         ])
         && data.inventoryId is string
         && data.productId is string
         && data.ownerType in ['company', 'agent']
         && data.ownerId is string
-        && data.type in ['initial', 'adjustment_in', 'adjustment_out']
+        && data.type in [
+          'initial', 'adjustment_in', 'adjustment_out',
+          'replenishment_out', 'replenishment_in'
+        ]
         && data.quantity is int
         && data.quantity > 0
         && data.quantityBefore is int
@@ -164,6 +167,8 @@ service cloud.firestore {
         && data.quantityAfter >= 0
         && data.reason is string
         && data.reason.size() > 0
+        && (!data.keys().hasAny(['referenceType']) || data.referenceType is string)
+        && (!data.keys().hasAny(['referenceId']) || data.referenceId is string)
         && data.createdBy is string
         && data.createdAt is timestamp;
     }
@@ -206,6 +211,260 @@ service cloud.firestore {
             && movement.quantityAfter == movement.quantityBefore + movement.quantity
           || movement.type == 'adjustment_out'
             && movement.quantityAfter == movement.quantityBefore - movement.quantity
+        );
+    }
+
+    function validReplenishmentItem(item) {
+      return item is map
+        && item.keys().hasAll(['productId', 'quantity'])
+        && item.keys().hasOnly(['productId', 'quantity'])
+        && item.productId is string
+        && item.productId.size() > 0
+        && item.quantity is int
+        && item.quantity > 0;
+    }
+
+    function validReplenishmentItems(items) {
+      return items is list
+        && items.size() > 0
+        && items.size() <= 3
+        && validReplenishmentItem(items[0])
+        && (items.size() < 2 || validReplenishmentItem(items[1]))
+        && (items.size() < 3 || validReplenishmentItem(items[2]))
+        && (items.size() < 2 || items[0].productId != items[1].productId)
+        && (items.size() < 3 || (
+          items[0].productId != items[2].productId
+          && items[1].productId != items[2].productId
+        ));
+    }
+
+    function validReplenishmentAgent(agentId) {
+      return get(/databases/$(database)/documents/users/$(agentId)).data.role == 'agent'
+        && get(/databases/$(database)/documents/users/$(agentId)).data.active == true;
+    }
+
+    function validActiveReplenishmentProducts(items) {
+      return get(/databases/$(database)/documents/products/$(items[0].productId)).data.active == true
+        && (items.size() < 2 || (
+          get(/databases/$(database)/documents/products/$(items[1].productId)).data.active == true
+        ))
+        && (items.size() < 3 || (
+          get(/databases/$(database)/documents/products/$(items[2].productId)).data.active == true
+        ));
+    }
+
+    function validReplenishmentShape(data) {
+      return data.keys().hasAll([
+          'number', 'status', 'agentId', 'items', 'notes',
+          'createdBy', 'createdAt', 'updatedAt'
+        ])
+        && data.number is string
+        && data.number.matches('^REP-[0-9]{6,}$')
+        && data.status in ['pending', 'sent', 'received', 'cancelled']
+        && data.agentId is string
+        && validReplenishmentItems(data.items)
+        && data.notes is string
+        && data.createdBy is string
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && (
+          data.status == 'pending'
+            && data.keys().hasOnly([
+              'number', 'status', 'agentId', 'items', 'notes',
+              'createdBy', 'createdAt', 'updatedAt'
+            ])
+          || data.status == 'sent'
+            && data.keys().hasAll(['sentBy', 'sentAt'])
+            && data.keys().hasOnly([
+              'number', 'status', 'agentId', 'items', 'notes',
+              'createdBy', 'createdAt', 'updatedAt', 'sentBy', 'sentAt'
+            ])
+            && data.sentBy is string
+            && data.sentAt is timestamp
+          || data.status == 'received'
+            && data.keys().hasAll(['sentBy', 'sentAt', 'receivedBy', 'receivedAt'])
+            && data.keys().hasOnly([
+              'number', 'status', 'agentId', 'items', 'notes',
+              'createdBy', 'createdAt', 'updatedAt', 'sentBy', 'sentAt',
+              'receivedBy', 'receivedAt'
+            ])
+            && data.sentBy is string
+            && data.sentAt is timestamp
+            && data.receivedBy is string
+            && data.receivedAt is timestamp
+          || data.status == 'cancelled'
+            && data.keys().hasAll(['cancelledBy', 'cancelledAt'])
+            && data.keys().hasOnly([
+              'number', 'status', 'agentId', 'items', 'notes',
+              'createdBy', 'createdAt', 'updatedAt',
+              'cancelledBy', 'cancelledAt'
+            ])
+            && data.cancelledBy is string
+            && data.cancelledAt is timestamp
+        );
+    }
+
+    function unchangedReplenishmentCore(before, after) {
+      return after.number == before.number
+        && after.agentId == before.agentId
+        && after.items == before.items
+        && after.notes == before.notes
+        && after.createdBy == before.createdBy
+        && after.createdAt == before.createdAt;
+    }
+
+    function itemMatches(items, productId, quantity) {
+      return items[0].productId == productId && items[0].quantity == quantity
+        || items.size() > 1
+          && items[1].productId == productId && items[1].quantity == quantity
+        || items.size() > 2
+          && items[2].productId == productId && items[2].quantity == quantity;
+    }
+
+    function validSentItem(replenishmentId, item) {
+      let inventoryId = 'company__company__' + item.productId;
+      let movementId = 'replenishment__' + replenishmentId + '__sent__' + item.productId;
+      let beforeInventory = get(/databases/$(database)/documents/inventory/$(inventoryId)).data;
+      let afterInventory = getAfter(/databases/$(database)/documents/inventory/$(inventoryId)).data;
+      let movement = getAfter(/databases/$(database)/documents/inventory_movements/$(movementId)).data;
+      return beforeInventory.quantity >= item.quantity
+        && afterInventory.productId == item.productId
+        && afterInventory.ownerType == 'company'
+        && afterInventory.ownerId == 'company'
+        && afterInventory.quantity == beforeInventory.quantity - item.quantity
+        && afterInventory.lastMovementId == movementId
+        && afterInventory.createdAt == beforeInventory.createdAt
+        && movement.inventoryId == inventoryId
+        && movement.productId == item.productId
+        && movement.ownerType == 'company'
+        && movement.ownerId == 'company'
+        && movement.type == 'replenishment_out'
+        && movement.quantity == item.quantity
+        && movement.quantityBefore == beforeInventory.quantity
+        && movement.quantityAfter == afterInventory.quantity
+        && movement.referenceType == 'replenishment'
+        && movement.referenceId == replenishmentId
+        && movement.createdBy == request.auth.uid;
+    }
+
+    function validAllSentItems(replenishmentId, items) {
+      return validSentItem(replenishmentId, items[0])
+        && (items.size() < 2 || validSentItem(replenishmentId, items[1]))
+        && (items.size() < 3 || validSentItem(replenishmentId, items[2]));
+    }
+
+    function validReceivedItem(replenishmentId, agentId, item) {
+      let inventoryId = 'agent__' + agentId + '__' + item.productId;
+      let movementId = 'replenishment__' + replenishmentId + '__received__' + item.productId;
+      let afterInventory = getAfter(/databases/$(database)/documents/inventory/$(inventoryId)).data;
+      let movement = getAfter(/databases/$(database)/documents/inventory_movements/$(movementId)).data;
+      return afterInventory.productId == item.productId
+        && afterInventory.ownerType == 'agent'
+        && afterInventory.ownerId == agentId
+        && afterInventory.lastMovementId == movementId
+        && movement.inventoryId == inventoryId
+        && movement.productId == item.productId
+        && movement.ownerType == 'agent'
+        && movement.ownerId == agentId
+        && movement.type == 'replenishment_in'
+        && movement.quantity == item.quantity
+        && movement.quantityBefore >= 0
+        && movement.quantityAfter == movement.quantityBefore + item.quantity
+        && movement.quantityAfter == afterInventory.quantity
+        && movement.referenceType == 'replenishment'
+        && movement.referenceId == replenishmentId
+        && movement.createdBy == request.auth.uid;
+    }
+
+    function validAllReceivedItems(replenishmentId, agentId, items) {
+      return validReceivedItem(replenishmentId, agentId, items[0])
+        && (items.size() < 2 || validReceivedItem(replenishmentId, agentId, items[1]))
+        && (items.size() < 3 || validReceivedItem(replenishmentId, agentId, items[2]));
+    }
+
+    function validReplenishmentInventoryOut(before, after) {
+      let movement = getAfter(/databases/$(database)/documents/inventory_movements/$(after.lastMovementId)).data;
+      let replenishmentId = movement.referenceId;
+      let beforeReplenishment = get(/databases/$(database)/documents/replenishments/$(replenishmentId)).data;
+      let afterReplenishment = getAfter(/databases/$(database)/documents/replenishments/$(replenishmentId)).data;
+      return isAdmin()
+        && movement.type == 'replenishment_out'
+        && movement.referenceType == 'replenishment'
+        && movement.inventoryId == 'company__company__' + after.productId
+        && movement.productId == after.productId
+        && movement.ownerType == 'company'
+        && movement.ownerId == 'company'
+        && movement.quantity == before.quantity - after.quantity
+        && movement.quantityBefore == before.quantity
+        && movement.quantityAfter == after.quantity
+        && movement.createdBy == request.auth.uid
+        && after.lastMovementId == 'replenishment__' + replenishmentId + '__sent__' + after.productId
+        && beforeReplenishment.status == 'pending'
+        && afterReplenishment.status == 'sent'
+        && afterReplenishment.sentBy == request.auth.uid
+        && itemMatches(afterReplenishment.items, after.productId, before.quantity - after.quantity);
+    }
+
+    function validReplenishmentInventoryIn(beforeQuantity, after) {
+      let movement = getAfter(/databases/$(database)/documents/inventory_movements/$(after.lastMovementId)).data;
+      let replenishmentId = movement.referenceId;
+      let beforeReplenishment = get(/databases/$(database)/documents/replenishments/$(replenishmentId)).data;
+      let afterReplenishment = getAfter(/databases/$(database)/documents/replenishments/$(replenishmentId)).data;
+      return isAgent()
+        && after.ownerType == 'agent'
+        && after.ownerId == request.auth.uid
+        && movement.type == 'replenishment_in'
+        && movement.referenceType == 'replenishment'
+        && movement.inventoryId == 'agent__' + request.auth.uid + '__' + after.productId
+        && movement.productId == after.productId
+        && movement.ownerType == 'agent'
+        && movement.ownerId == request.auth.uid
+        && movement.quantity == after.quantity - beforeQuantity
+        && movement.quantityBefore == beforeQuantity
+        && movement.quantityAfter == after.quantity
+        && movement.createdBy == request.auth.uid
+        && after.lastMovementId == 'replenishment__' + replenishmentId + '__received__' + after.productId
+        && beforeReplenishment.status == 'sent'
+        && beforeReplenishment.agentId == request.auth.uid
+        && afterReplenishment.status == 'received'
+        && afterReplenishment.receivedBy == request.auth.uid
+        && itemMatches(afterReplenishment.items, after.productId, after.quantity - beforeQuantity);
+    }
+
+    function validReplenishmentMovement(movementId, data) {
+      let replenishmentId = data.referenceId;
+      let beforeReplenishment = get(/databases/$(database)/documents/replenishments/$(replenishmentId)).data;
+      let afterReplenishment = getAfter(/databases/$(database)/documents/replenishments/$(replenishmentId)).data;
+      return data.referenceType == 'replenishment'
+        && data.createdBy == request.auth.uid
+        && data.quantityAfter >= 0
+        && existsAfter(/databases/$(database)/documents/inventory/$(data.inventoryId))
+        && getAfter(/databases/$(database)/documents/inventory/$(data.inventoryId)).data.lastMovementId == movementId
+        && getAfter(/databases/$(database)/documents/inventory/$(data.inventoryId)).data.quantity == data.quantityAfter
+        && (
+          isAdmin()
+            && data.type == 'replenishment_out'
+            && data.ownerType == 'company'
+            && data.ownerId == 'company'
+            && data.inventoryId == 'company__company__' + data.productId
+            && movementId == 'replenishment__' + replenishmentId + '__sent__' + data.productId
+            && beforeReplenishment.status == 'pending'
+            && afterReplenishment.status == 'sent'
+            && afterReplenishment.sentBy == request.auth.uid
+            && itemMatches(afterReplenishment.items, data.productId, data.quantity)
+            && data.quantityAfter == data.quantityBefore - data.quantity
+          || isAgent()
+            && data.type == 'replenishment_in'
+            && data.ownerType == 'agent'
+            && data.ownerId == request.auth.uid
+            && data.inventoryId == 'agent__' + request.auth.uid + '__' + data.productId
+            && movementId == 'replenishment__' + replenishmentId + '__received__' + data.productId
+            && beforeReplenishment.status == 'sent'
+            && beforeReplenishment.agentId == request.auth.uid
+            && afterReplenishment.status == 'received'
+            && afterReplenishment.receivedBy == request.auth.uid
+            && itemMatches(afterReplenishment.items, data.productId, data.quantity)
+            && data.quantityAfter == data.quantityBefore + data.quantity
         );
     }
 
@@ -307,30 +566,50 @@ service cloud.firestore {
     }
 
     match /inventory/{inventoryId} {
-      allow read: if isAdmin()
+      allow get: if isAdmin()
+        || isAgent()
+          && inventoryId.matches('agent__' + request.auth.uid + '__.*');
+
+      allow list: if isAdmin()
         || isAgent()
           && resource.data.ownerType == 'agent'
           && resource.data.ownerId == request.auth.uid;
 
-      allow create: if isAdmin()
-        && hasValidInventoryShape(request.resource.data)
+      allow create: if hasValidInventoryShape(request.resource.data)
         && inventoryId == request.resource.data.ownerType + '__' + request.resource.data.ownerId + '__' + request.resource.data.productId
-        && exists(/databases/$(database)/documents/products/$(request.resource.data.productId))
-        && get(/databases/$(database)/documents/products/$(request.resource.data.productId)).data.active == true
-        && validInventoryOwner(request.resource.data)
-        && validInitialMovement(inventoryId, request.resource.data);
+        && (
+          isAdmin()
+            && exists(/databases/$(database)/documents/products/$(request.resource.data.productId))
+            && get(/databases/$(database)/documents/products/$(request.resource.data.productId)).data.active == true
+            && validInventoryOwner(request.resource.data)
+            && validInitialMovement(inventoryId, request.resource.data)
+          || validReplenishmentInventoryIn(
+            0,
+            request.resource.data
+          )
+        );
 
-      allow update: if isAdmin()
-        && hasValidInventoryShape(request.resource.data)
+      allow update: if hasValidInventoryShape(request.resource.data)
         && request.resource.data.productId == resource.data.productId
         && request.resource.data.ownerType == resource.data.ownerType
         && request.resource.data.ownerId == resource.data.ownerId
         && request.resource.data.createdAt == resource.data.createdAt
         && request.resource.data.lastMovementId != resource.data.lastMovementId
-        && validAdjustmentMovement(
-          inventoryId,
-          resource.data.quantity,
-          request.resource.data
+        && (
+          isAdmin()
+            && validAdjustmentMovement(
+              inventoryId,
+              resource.data.quantity,
+              request.resource.data
+            )
+          || validReplenishmentInventoryOut(
+            resource.data,
+            request.resource.data
+          )
+          || validReplenishmentInventoryIn(
+            resource.data.quantity,
+            request.resource.data
+          )
         );
 
       allow delete: if false;
@@ -342,8 +621,7 @@ service cloud.firestore {
           && resource.data.ownerType == 'agent'
           && resource.data.ownerId == request.auth.uid;
 
-      allow create: if isAdmin()
-        && hasValidMovementShape(request.resource.data)
+      allow create: if hasValidMovementShape(request.resource.data)
         && request.resource.data.createdBy == request.auth.uid
         && existsAfter(/databases/$(database)/documents/inventory/$(request.resource.data.inventoryId))
         && getAfter(/databases/$(database)/documents/inventory/$(request.resource.data.inventoryId)).data.lastMovementId == movementId
@@ -352,22 +630,94 @@ service cloud.firestore {
         && getAfter(/databases/$(database)/documents/inventory/$(request.resource.data.inventoryId)).data.ownerId == request.resource.data.ownerId
         && getAfter(/databases/$(database)/documents/inventory/$(request.resource.data.inventoryId)).data.quantity == request.resource.data.quantityAfter
         && (
-          request.resource.data.type == 'initial'
-            && !exists(/databases/$(database)/documents/inventory/$(request.resource.data.inventoryId))
-            && request.resource.data.quantityBefore == 0
-            && request.resource.data.quantityAfter == request.resource.data.quantity
-          || request.resource.data.type in ['adjustment_in', 'adjustment_out']
-            && exists(/databases/$(database)/documents/inventory/$(request.resource.data.inventoryId))
-            && get(/databases/$(database)/documents/inventory/$(request.resource.data.inventoryId)).data.quantity == request.resource.data.quantityBefore
+          isAdmin()
             && (
-              request.resource.data.type == 'adjustment_in'
-                && request.resource.data.quantityAfter == request.resource.data.quantityBefore + request.resource.data.quantity
-              || request.resource.data.type == 'adjustment_out'
-                && request.resource.data.quantityAfter == request.resource.data.quantityBefore - request.resource.data.quantity
+              request.resource.data.type == 'initial'
+                && !exists(/databases/$(database)/documents/inventory/$(request.resource.data.inventoryId))
+                && request.resource.data.quantityBefore == 0
+                && request.resource.data.quantityAfter == request.resource.data.quantity
+              || request.resource.data.type in ['adjustment_in', 'adjustment_out']
+                && exists(/databases/$(database)/documents/inventory/$(request.resource.data.inventoryId))
+                && get(/databases/$(database)/documents/inventory/$(request.resource.data.inventoryId)).data.quantity == request.resource.data.quantityBefore
+                && (
+                  request.resource.data.type == 'adjustment_in'
+                    && request.resource.data.quantityAfter == request.resource.data.quantityBefore + request.resource.data.quantity
+                  || request.resource.data.type == 'adjustment_out'
+                    && request.resource.data.quantityAfter == request.resource.data.quantityBefore - request.resource.data.quantity
+                )
             )
+          || validReplenishmentMovement(movementId, request.resource.data)
         );
 
       allow update, delete: if false;
+    }
+
+    match /system_counters/{counterId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin()
+        && counterId == 'replenishments'
+        && request.resource.data.keys().hasAll(['count'])
+        && request.resource.data.keys().hasOnly(['count'])
+        && request.resource.data.count == 1;
+      allow update: if isAdmin()
+        && counterId == 'replenishments'
+        && request.resource.data.keys().hasAll(['count'])
+        && request.resource.data.keys().hasOnly(['count'])
+        && resource.data.count is int
+        && request.resource.data.count == resource.data.count + 1;
+      allow delete: if false;
+    }
+
+    match /replenishments/{replenishmentId} {
+      allow read: if isAdmin()
+        || isAgent() && resource.data.agentId == request.auth.uid;
+
+      allow create: if isAdmin()
+        && validReplenishmentShape(request.resource.data)
+        && request.resource.data.status == 'pending'
+        && request.resource.data.createdBy == request.auth.uid
+        && validReplenishmentAgent(request.resource.data.agentId)
+        && validActiveReplenishmentProducts(request.resource.data.items);
+
+      allow update: if validReplenishmentShape(request.resource.data)
+        && (
+          isAdmin()
+            && resource.data.status == 'pending'
+            && request.resource.data.status == 'pending'
+            && request.resource.data.number == resource.data.number
+            && request.resource.data.createdBy == resource.data.createdBy
+            && request.resource.data.createdAt == resource.data.createdAt
+            && validReplenishmentAgent(request.resource.data.agentId)
+            && validActiveReplenishmentProducts(request.resource.data.items)
+          || isAdmin()
+            && resource.data.status == 'pending'
+            && request.resource.data.status == 'cancelled'
+            && unchangedReplenishmentCore(resource.data, request.resource.data)
+            && request.resource.data.cancelledBy == request.auth.uid
+          || isAdmin()
+            && resource.data.status == 'pending'
+            && request.resource.data.status == 'sent'
+            && unchangedReplenishmentCore(resource.data, request.resource.data)
+            && request.resource.data.sentBy == request.auth.uid
+            && validReplenishmentAgent(request.resource.data.agentId)
+            && validActiveReplenishmentProducts(request.resource.data.items)
+            && validAllSentItems(replenishmentId, request.resource.data.items)
+          || isAgent()
+            && resource.data.status == 'sent'
+            && resource.data.agentId == request.auth.uid
+            && request.resource.data.status == 'received'
+            && unchangedReplenishmentCore(resource.data, request.resource.data)
+            && request.resource.data.sentBy == resource.data.sentBy
+            && request.resource.data.sentAt == resource.data.sentAt
+            && request.resource.data.receivedBy == request.auth.uid
+            && validAllReceivedItems(
+              replenishmentId,
+              request.auth.uid,
+              request.resource.data.items
+            )
+        );
+
+      allow delete: if false;
     }
 
     match /{document=**} {
