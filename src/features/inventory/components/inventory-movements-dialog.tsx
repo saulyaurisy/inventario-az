@@ -8,6 +8,7 @@ const MOVEMENT_LABELS: Record<InventoryMovement["type"], string> = {
   adjustment_out: "Salida",
   replenishment_out: "Salida por reposición",
   replenishment_in: "Entrada por reposición",
+  sale: "Venta",
 };
 
 interface InventoryMovementsDialogProps {
@@ -32,7 +33,7 @@ export function InventoryMovementsDialog({ actorLabels, error, loading, movement
             <div className="space-y-3">
               {movements.map((movement) => (
                 <article className="rounded-2xl border border-slate-200 p-4" key={movement.id}>
-                  <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-bold text-slate-950">{MOVEMENT_LABELS[movement.type]}</h3><p className="mt-1 text-xs text-slate-500">{new Intl.DateTimeFormat("es-PE", { dateStyle: "medium", timeStyle: "short" }).format(movement.createdAt.toDate())}</p></div><span className={movement.type === "adjustment_out" || movement.type === "replenishment_out" ? "rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-800" : "rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-800"}>{movement.type === "adjustment_out" || movement.type === "replenishment_out" ? "−" : "+"}{movement.quantity}</span></div>
+                  <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-bold text-slate-950">{MOVEMENT_LABELS[movement.type]}</h3><p className="mt-1 text-xs text-slate-500">{new Intl.DateTimeFormat("es-PE", { dateStyle: "medium", timeStyle: "short" }).format(movement.createdAt.toDate())}</p></div><span className={movement.type === "adjustment_out" || movement.type === "replenishment_out" || movement.type === "sale" ? "rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-800" : "rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-800"}>{movement.type === "adjustment_out" || movement.type === "replenishment_out" || movement.type === "sale" ? "−" : "+"}{movement.quantity}</span></div>
                   <dl className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4"><div><dt className="text-xs text-slate-500">Anterior</dt><dd className="font-semibold text-slate-900">{movement.quantityBefore}</dd></div><div><dt className="text-xs text-slate-500">Posterior</dt><dd className="font-semibold text-slate-900">{movement.quantityAfter}</dd></div><div className="col-span-2"><dt className="text-xs text-slate-500">Registrado por</dt><dd className="font-semibold text-slate-900">{actorLabels[movement.createdBy] ?? movement.createdBy}</dd></div></dl>
                   <p className="mt-3 text-sm text-slate-700"><span className="font-semibold">Motivo:</span> {movement.reason}</p>
                 </article>

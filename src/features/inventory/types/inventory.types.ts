@@ -8,7 +8,8 @@ export type InventoryMovementType =
   | "adjustment_in"
   | "adjustment_out"
   | "replenishment_out"
-  | "replenishment_in";
+  | "replenishment_in"
+  | "sale";
 export type InventoryAdjustmentDirection = "in" | "out";
 export type InventoryStockStatus =
   | "uninitialized"

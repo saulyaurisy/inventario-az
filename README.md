@@ -2,7 +2,7 @@
 
 Aplicación modular de ventas e inventario construida con Next.js, TypeScript, Tailwind CSS y Firebase.
 
-Actualmente incluye autenticación con email y contraseña, perfiles almacenados en Firestore, roles `admin` y `agent`, control de usuarios activos, sesión persistente, layout autenticado, gestión del catálogo de productos, directorio de clientes, inventario por empresa y agente, Kardex de movimientos y reposiciones de empresa a agente. Los módulos de ventas y reportes todavía no están implementados.
+Actualmente incluye autenticación con email y contraseña, perfiles almacenados en Firestore, roles `admin` y `agent`, control de usuarios activos, sesión persistente, layout autenticado, gestión del catálogo de productos, directorio de clientes, inventario por empresa y agente, Kardex de movimientos, reposiciones de empresa a agente y ventas. El módulo de reportes todavía no está implementado.
 
 ## Requisitos
 
@@ -156,7 +156,7 @@ firebase deploy --only auth,firestore:rules
 - Los números puramente numéricos eliminan espacios internos; otros documentos se recortan, compactan espacios y normalizan a mayúsculas.
 - DNI y CE con el mismo número se consideran identidades distintas porque el tipo forma parte de la clave.
 - `createdBy` y `updatedBy` registran el UID autenticado, y los timestamps provienen del servidor.
-- El detalle incluye una sección visual preparada para historial de compras, sin consultar ni crear ventas.
+- El detalle integra el historial real de ventas visible para el rol autenticado, con número, fecha, total, estado y agente.
 
 ## Inventario
 
@@ -188,6 +188,18 @@ firebase deploy --only auth,firestore:rules
 - Para mantener la recepción segura en el cliente bajo los límites de evaluación de reglas de Firestore, cada reposición admite entre 1 y 3 productos distintos. No requiere Functions, backend adicional ni plan Blaze.
 
 > Nota técnica: máximo seguro de 3 productos por reposición con las reglas Firestore actuales.
+
+## Ventas
+
+- La ruta `/sales` permite a cada agente registrar ventas exclusivamente contra su propio inventario y consultar sus operaciones. El administrador dispone de consulta global y filtros, pero no registra ventas.
+- Cliente y productos deben estar activos. La venta, el descuento de existencias y un movimiento `sale` por producto se confirman en una única transacción; si una línea no tiene stock suficiente, no se escribe ningún cambio.
+- Los importes monetarios históricos se guardan en céntimos enteros. Cada ítem conserva snapshots de SKU, nombre, precio de venta y costo, por lo que los cambios posteriores del catálogo no alteran la venta.
+- El servicio recalcula subtotales, descuentos y total. La suma de descuentos de un agente no puede superar el 20% del subtotal y las reglas vuelven a comprobar precio, totales, propietario, movimiento y stock no negativo.
+- Los identificadores determinísticos de operación y movimiento hacen idempotente el reintento de una misma venta. `inventory` e `inventory_movements` siguen siendo las únicas fuentes de stock e historial.
+- Para operar con seguridad desde el SDK web sin permisos generales sobre inventario, `sale_intents/{operationId}` conserva un candidato inmutable y sin efecto en stock. La transacción final lo consume, crea la venta, actualiza todos los stocks y registra todos los movimientos de una sola vez. Un intento preparado no es una venta y puede quedar pendiente si la operación se rechaza.
+- Por el límite de lecturas de seguridad de Firestore, cada venta admite de 1 a 3 productos distintos. El número se reserva mediante `system_counters/sales`; sigue siendo único y creciente, aunque puede tener huecos si una venta preparada finalmente falla. Esta implementación no incluye anulación de ventas ni movimientos de retorno.
+
+> Nota técnica: máximo seguro de 3 productos por venta con las reglas Firestore actuales.
 
 ## Ejecución
 

@@ -47,6 +47,7 @@ function isMovementType(value: unknown): value is InventoryMovementType {
     "adjustment_out",
     "replenishment_out",
     "replenishment_in",
+    "sale",
   ].includes(String(value));
 }
 

@@ -1,11 +1,21 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
+
+import type { UserRole } from "@/features/auth";
+import { listSalesByClient } from "@/features/sales/services/sales.service";
+import type { Sale } from "@/features/sales/types/sale.types";
+import { formatMoney } from "@/features/sales/utils/sale-utils";
+
 import type { Client } from "../types/client.types";
 import { DOCUMENT_TYPE_LABELS } from "../utils/client-validation";
 
 interface ClientDetailDialogProps {
+  actorLabel: string;
+  actorUid: string;
   client: Client;
   onClose: () => void;
+  role: UserRole;
 }
 
 function DetailItem({ label, value }: { label: string; value?: string }) {
@@ -20,9 +30,25 @@ function DetailItem({ label, value }: { label: string; value?: string }) {
 }
 
 export function ClientDetailDialog({
+  actorLabel,
+  actorUid,
   client,
   onClose,
+  role,
 }: ClientDetailDialogProps) {
+  const [sales, setSales] = useState<Sale[]>([]);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const totalPurchased = useMemo(() => sales.reduce((sum, sale) => sum + sale.total, 0), [sales]);
+
+  useEffect(() => {
+    let ignore = false;
+    listSalesByClient(client.id, role, actorUid)
+      .then((result) => { if (!ignore) setSales(result); })
+      .catch(() => { if (!ignore) setHistoryError("No se pudo cargar el historial de ventas."); })
+      .finally(() => { if (!ignore) setHistoryLoading(false); });
+    return () => { ignore = true; };
+  }, [actorUid, client.id, role]);
   const createdAt = new Intl.DateTimeFormat("es-PE", {
     dateStyle: "long",
     timeStyle: "short",
@@ -78,13 +104,11 @@ export function ClientDetailDialog({
             </div>
           </dl>
 
-          <section aria-labelledby="purchase-history-title" className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5">
+          <section aria-labelledby="purchase-history-title" className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
             <h3 className="font-bold text-slate-950" id="purchase-history-title">
               Historial de compras
             </h3>
-            <p className="mt-2 text-sm text-slate-600">
-              Aún no hay ventas registradas para este cliente.
-            </p>
+            {historyLoading ? <p className="mt-2 text-sm text-slate-600">Cargando historial...</p> : historyError ? <p className="mt-2 text-sm text-red-700">{historyError}</p> : sales.length === 0 ? <p className="mt-2 text-sm text-slate-600">Aún no hay ventas registradas para este cliente.</p> : <div className="mt-4 space-y-3"><div className="flex items-center justify-between rounded-xl bg-white p-3 text-sm"><span className="text-slate-600">Total histórico</span><strong className="text-emerald-800">{formatMoney(totalPurchased)}</strong></div>{sales.map((sale) => <article className="rounded-xl border border-slate-200 bg-white p-3" key={sale.id}><div className="flex items-start justify-between gap-3"><div><p className="font-bold text-slate-950">{sale.number}</p><p className="mt-1 text-xs text-slate-500">{new Intl.DateTimeFormat("es-PE", { dateStyle: "medium", timeStyle: "short" }).format(sale.createdAt.toDate())}</p></div><strong className="text-emerald-800">{formatMoney(sale.total)}</strong></div><div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600"><span>{sale.items.length} {sale.items.length === 1 ? "producto" : "productos"}</span><span>Agente: {role === "agent" ? actorLabel : sale.agentId}</span><span>{sale.status === "completed" ? "Completada" : "Anulada"}</span></div></article>)}</div>}
           </section>
         </div>
       </section>

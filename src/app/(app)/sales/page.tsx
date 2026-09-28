@@ -1,10 +1,10 @@
-import { ModulePlaceholder } from "@/components/layout";
+import { RoleRoute } from "@/features/auth";
+import { SalesContent } from "@/features/sales";
 
 export default function SalesPage() {
   return (
-    <ModulePlaceholder
-      description="Registro y consulta de operaciones de venta."
-      title="Ventas"
-    />
+    <RoleRoute allowedRoles={["admin", "agent"]}>
+      <SalesContent />
+    </RoleRoute>
   );
 }

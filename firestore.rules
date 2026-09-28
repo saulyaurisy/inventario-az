@@ -157,7 +157,7 @@ service cloud.firestore {
         && data.ownerId is string
         && data.type in [
           'initial', 'adjustment_in', 'adjustment_out',
-          'replenishment_out', 'replenishment_in'
+          'replenishment_out', 'replenishment_in', 'sale'
         ]
         && data.quantity is int
         && data.quantity > 0
@@ -171,6 +171,15 @@ service cloud.firestore {
         && (!data.keys().hasAny(['referenceId']) || data.referenceId is string)
         && data.createdBy is string
         && data.createdAt is timestamp;
+    }
+
+    function movementMatchesInventory(movementId, data) {
+      let inventory = getAfter(/databases/$(database)/documents/inventory/$(data.inventoryId)).data;
+      return inventory.lastMovementId == movementId
+        && inventory.productId == data.productId
+        && inventory.ownerType == data.ownerType
+        && inventory.ownerId == data.ownerId
+        && inventory.quantity == data.quantityAfter;
     }
 
     function validInventoryOwner(data) {
@@ -468,6 +477,227 @@ service cloud.firestore {
         );
     }
 
+    function validSaleItem(item) {
+      return item is map
+        && item.keys().hasAll([
+          'productId', 'sku', 'name', 'quantity', 'unitPrice', 'unitCost',
+          'lineSubtotal', 'discountAmount', 'lineTotal'
+        ])
+        && item.keys().hasOnly([
+          'productId', 'sku', 'name', 'quantity', 'unitPrice', 'unitCost',
+          'lineSubtotal', 'discountType', 'discountValue',
+          'discountAmount', 'lineTotal'
+        ])
+        && item.productId is string
+        && item.productId.size() > 0
+        && item.sku is string
+        && item.sku.size() > 0
+        && item.name is string
+        && item.name.size() > 0
+        && item.quantity is int
+        && item.quantity > 0
+        && item.unitPrice is int
+        && item.unitPrice >= 0
+        && item.unitCost is int
+        && item.unitCost >= 0
+        && item.lineSubtotal is int
+        && item.lineSubtotal == item.unitPrice * item.quantity
+        && item.discountAmount is int
+        && item.discountAmount >= 0
+        && item.discountAmount <= item.lineSubtotal
+        && item.lineTotal is int
+        && item.lineTotal == item.lineSubtotal - item.discountAmount
+        && (
+          !item.keys().hasAny(['discountType', 'discountValue'])
+          || item.keys().hasAll(['discountType', 'discountValue'])
+            && item.discountType in ['percentage', 'fixed']
+            && item.discountValue is number
+            && item.discountValue >= 0
+            && (item.discountType != 'percentage' || item.discountValue <= 100)
+        );
+    }
+
+    function validSaleItems(items) {
+      return items is list
+        && items.size() > 0
+        && items.size() <= 3
+        && validSaleItem(items[0])
+        && (items.size() < 2 || validSaleItem(items[1]))
+        && (items.size() < 3 || validSaleItem(items[2]))
+        && (items.size() < 2 || items[0].productId != items[1].productId)
+        && (items.size() < 3 || (
+          items[0].productId != items[2].productId
+          && items[1].productId != items[2].productId
+        ));
+    }
+
+    function saleSubtotal(items) {
+      return items[0].lineSubtotal
+        + (items.size() > 1 ? items[1].lineSubtotal : 0)
+        + (items.size() > 2 ? items[2].lineSubtotal : 0);
+    }
+
+    function saleLineDiscount(items) {
+      return items[0].discountAmount
+        + (items.size() > 1 ? items[1].discountAmount : 0)
+        + (items.size() > 2 ? items[2].discountAmount : 0);
+    }
+
+    function validSaleShape(data) {
+      return data.keys().hasAll([
+          'operationId', 'number', 'status', 'agentId', 'clientId',
+          'clientSnapshot', 'items', 'subtotal', 'lineDiscountTotal',
+          'globalDiscountAmount', 'totalDiscount', 'total', 'paymentMethod',
+          'createdBy', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'operationId', 'number', 'status', 'agentId', 'clientId',
+          'clientSnapshot', 'items', 'subtotal', 'lineDiscountTotal',
+          'globalDiscountType', 'globalDiscountValue', 'globalDiscountAmount',
+          'totalDiscount', 'total', 'paymentMethod', 'paymentReference',
+          'notes', 'createdBy', 'createdAt', 'updatedAt'
+        ])
+        && data.operationId is string
+        && data.operationId.matches('^[A-Za-z0-9_-]{8,100}$')
+        && data.number is string
+        && data.number.matches('^V-[0-9]{6,}$')
+        && data.status == 'completed'
+        && data.agentId is string
+        && data.clientId is string
+        && data.clientSnapshot is map
+        && data.clientSnapshot.keys().hasAll(['name', 'documentType', 'documentNumber'])
+        && data.clientSnapshot.keys().hasOnly(['name', 'documentType', 'documentNumber'])
+        && data.clientSnapshot.name is string
+        && data.clientSnapshot.documentType is string
+        && data.clientSnapshot.documentNumber is string
+        && validSaleItems(data.items)
+        && data.subtotal is int
+        && data.subtotal == saleSubtotal(data.items)
+        && data.lineDiscountTotal is int
+        && data.lineDiscountTotal == saleLineDiscount(data.items)
+        && data.globalDiscountAmount is int
+        && data.globalDiscountAmount >= 0
+        && data.globalDiscountAmount <= data.subtotal - data.lineDiscountTotal
+        && data.totalDiscount is int
+        && data.totalDiscount == data.lineDiscountTotal + data.globalDiscountAmount
+        && data.total is int
+        && data.total == data.subtotal - data.totalDiscount
+        && data.total >= 0
+        && data.totalDiscount * 100 <= data.subtotal * 20
+        && (
+          !data.keys().hasAny(['globalDiscountType', 'globalDiscountValue'])
+          || data.keys().hasAll(['globalDiscountType', 'globalDiscountValue'])
+            && data.globalDiscountType in ['percentage', 'fixed']
+            && data.globalDiscountValue is number
+            && data.globalDiscountValue >= 0
+            && (data.globalDiscountType != 'percentage' || data.globalDiscountValue <= 100)
+        )
+        && data.paymentMethod in ['cash', 'yape', 'plin', 'bank_transfer', 'card', 'other']
+        && (!data.keys().hasAny(['paymentReference']) || data.paymentReference is string && data.paymentReference.size() <= 100)
+        && (!data.keys().hasAny(['notes']) || data.notes is string && data.notes.size() <= 300)
+        && data.createdBy is string
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function validSaleClient(data) {
+      let client = get(/databases/$(database)/documents/clients/$(data.clientId)).data;
+      return client.active == true
+        && data.clientSnapshot.name == client.name
+        && data.clientSnapshot.documentType == client.documentType
+        && data.clientSnapshot.documentNumber == client.documentNumber;
+    }
+
+    function saleItemMatches(items, productId, quantity) {
+      return items[0].productId == productId && items[0].quantity == quantity
+        || items.size() > 1 && items[1].productId == productId && items[1].quantity == quantity
+        || items.size() > 2 && items[2].productId == productId && items[2].quantity == quantity;
+    }
+
+    function validSaleMovementExists(saleId, agentId, item) {
+      let movementId = 'sale__' + saleId + '__' + item.productId;
+      let movement = getAfter(/databases/$(database)/documents/inventory_movements/$(movementId)).data;
+      return movement.inventoryId == 'agent__' + agentId + '__' + item.productId
+        && movement.productId == item.productId
+        && movement.ownerType == 'agent'
+        && movement.ownerId == agentId
+        && movement.type == 'sale'
+        && movement.quantity == item.quantity
+        && movement.referenceType == 'sale'
+        && movement.referenceId == saleId
+        && movement.createdBy == request.auth.uid;
+    }
+
+    function validAllSaleItems(saleId, agentId, items) {
+      return validSaleMovementExists(saleId, agentId, items[0])
+        && (items.size() < 2 || validSaleMovementExists(saleId, agentId, items[1]))
+        && (items.size() < 3 || validSaleMovementExists(saleId, agentId, items[2]));
+    }
+
+    function saleItemMatchesProduct(items, movement, product) {
+      return items[0].productId == movement.productId
+          && items[0].quantity == movement.quantity
+          && items[0].sku == product.sku
+          && items[0].name == product.name
+          && items[0].unitPrice >= product.salePrice * 100 - 0.5
+          && items[0].unitPrice < product.salePrice * 100 + 0.5
+          && items[0].unitCost >= product.costPrice * 100 - 0.5
+          && items[0].unitCost < product.costPrice * 100 + 0.5
+        || items.size() > 1
+          && items[1].productId == movement.productId
+          && items[1].quantity == movement.quantity
+          && items[1].sku == product.sku
+          && items[1].name == product.name
+          && items[1].unitPrice >= product.salePrice * 100 - 0.5
+          && items[1].unitPrice < product.salePrice * 100 + 0.5
+          && items[1].unitCost >= product.costPrice * 100 - 0.5
+          && items[1].unitCost < product.costPrice * 100 + 0.5
+        || items.size() > 2
+          && items[2].productId == movement.productId
+          && items[2].quantity == movement.quantity
+          && items[2].sku == product.sku
+          && items[2].name == product.name
+          && items[2].unitPrice >= product.salePrice * 100 - 0.5
+          && items[2].unitPrice < product.salePrice * 100 + 0.5
+          && items[2].unitCost >= product.costPrice * 100 - 0.5
+          && items[2].unitCost < product.costPrice * 100 + 0.5;
+    }
+
+    function validSaleInventory(before, after) {
+      let movement = getAfter(/databases/$(database)/documents/inventory_movements/$(after.lastMovementId)).data;
+      return isSignedIn()
+        && after.ownerType == 'agent'
+        && after.ownerId == request.auth.uid
+        && movement.type == 'sale'
+        && movement.referenceType == 'sale'
+        && movement.inventoryId == 'agent__' + request.auth.uid + '__' + after.productId
+        && movement.productId == after.productId
+        && movement.ownerType == 'agent'
+        && movement.ownerId == request.auth.uid
+        && movement.quantity == before.quantity - after.quantity
+        && movement.quantityBefore == before.quantity
+        && movement.quantityAfter == after.quantity
+        && movement.createdBy == request.auth.uid
+        && after.lastMovementId == 'sale__' + movement.referenceId + '__' + after.productId;
+    }
+
+    function validSaleMovement(movementId, data) {
+      let intent = getAfter(/databases/$(database)/documents/sale_intents/$(data.referenceId)).data;
+      let product = get(/databases/$(database)/documents/products/$(data.productId)).data;
+      return isSignedIn()
+        && data.type == 'sale'
+        && data.referenceType == 'sale'
+        && data.ownerType == 'agent'
+        && data.ownerId == request.auth.uid
+        && data.inventoryId == 'agent__' + request.auth.uid + '__' + data.productId
+        && movementId == 'sale__' + data.referenceId + '__' + data.productId
+        && data.quantityAfter == data.quantityBefore - data.quantity
+        && intent.status == 'consumed'
+        && intent.agentId == request.auth.uid
+        && product.active == true
+        && saleItemMatchesProduct(intent.sale.items, data, product);
+    }
+
     match /users/{userId} {
       allow read: if isSignedIn()
         && (request.auth.uid == userId || isAdmin());
@@ -566,9 +796,9 @@ service cloud.firestore {
     }
 
     match /inventory/{inventoryId} {
-      allow get: if isAdmin()
-        || isAgent()
-          && inventoryId.matches('agent__' + request.auth.uid + '__.*');
+      allow get: if isSignedIn()
+          && inventoryId.matches('agent__' + request.auth.uid + '__.*')
+        || isAdmin();
 
       allow list: if isAdmin()
         || isAgent()
@@ -596,7 +826,12 @@ service cloud.firestore {
         && request.resource.data.createdAt == resource.data.createdAt
         && request.resource.data.lastMovementId != resource.data.lastMovementId
         && (
-          isAdmin()
+          request.resource.data.lastMovementId.matches('^sale__.*')
+            && validSaleInventory(
+              resource.data,
+              request.resource.data
+            )
+          || isAdmin()
             && validAdjustmentMovement(
               inventoryId,
               resource.data.quantity,
@@ -623,14 +858,11 @@ service cloud.firestore {
 
       allow create: if hasValidMovementShape(request.resource.data)
         && request.resource.data.createdBy == request.auth.uid
-        && existsAfter(/databases/$(database)/documents/inventory/$(request.resource.data.inventoryId))
-        && getAfter(/databases/$(database)/documents/inventory/$(request.resource.data.inventoryId)).data.lastMovementId == movementId
-        && getAfter(/databases/$(database)/documents/inventory/$(request.resource.data.inventoryId)).data.productId == request.resource.data.productId
-        && getAfter(/databases/$(database)/documents/inventory/$(request.resource.data.inventoryId)).data.ownerType == request.resource.data.ownerType
-        && getAfter(/databases/$(database)/documents/inventory/$(request.resource.data.inventoryId)).data.ownerId == request.resource.data.ownerId
-        && getAfter(/databases/$(database)/documents/inventory/$(request.resource.data.inventoryId)).data.quantity == request.resource.data.quantityAfter
+        && movementMatchesInventory(movementId, request.resource.data)
         && (
-          isAdmin()
+          request.resource.data.type == 'sale'
+            && validSaleMovement(movementId, request.resource.data)
+          || isAdmin()
             && (
               request.resource.data.type == 'initial'
                 && !exists(/databases/$(database)/documents/inventory/$(request.resource.data.inventoryId))
@@ -653,14 +885,18 @@ service cloud.firestore {
     }
 
     match /system_counters/{counterId} {
-      allow read: if isAdmin();
-      allow create: if isAdmin()
-        && counterId == 'replenishments'
+      allow read: if isSignedIn() && counterId == 'sales' || isAdmin();
+      allow create: if (
+          isAdmin() && counterId == 'replenishments'
+          || isAgent() && counterId == 'sales'
+        )
         && request.resource.data.keys().hasAll(['count'])
         && request.resource.data.keys().hasOnly(['count'])
         && request.resource.data.count == 1;
-      allow update: if isAdmin()
-        && counterId == 'replenishments'
+      allow update: if (
+          isAdmin() && counterId == 'replenishments'
+          || isAgent() && counterId == 'sales'
+        )
         && request.resource.data.keys().hasAll(['count'])
         && request.resource.data.keys().hasOnly(['count'])
         && resource.data.count is int
@@ -719,6 +955,59 @@ service cloud.firestore {
 
       allow delete: if false;
     }
+
+    match /sales/{saleId} {
+      allow get: if isSignedIn() && resource == null
+        || isAdmin()
+        || isAgent() && resource.data.agentId == request.auth.uid;
+
+      allow list: if isAdmin()
+        || isAgent() && resource.data.agentId == request.auth.uid;
+
+      allow create: if isSignedIn()
+        && saleId == request.resource.data.operationId
+        && request.resource.data.agentId == request.auth.uid
+        && request.resource.data.createdBy == request.auth.uid
+        && getAfter(/databases/$(database)/documents/sale_intents/$(saleId)).data.status == 'consumed'
+        && getAfter(/databases/$(database)/documents/sale_intents/$(saleId)).data.sale == request.resource.data
+        && validAllSaleItems(
+          saleId,
+          request.auth.uid,
+          request.resource.data.items
+        );
+
+      allow update, delete: if false;
+    }
+
+    match /sale_intents/{intentId} {
+      allow get: if isSignedIn()
+        && (resource == null || resource.data.agentId == request.auth.uid);
+      allow list: if false;
+
+      allow create: if isAgent()
+        && request.resource.data.keys().hasAll(['status', 'agentId', 'sale'])
+        && request.resource.data.keys().hasOnly(['status', 'agentId', 'sale'])
+        && request.resource.data.status == 'prepared'
+        && request.resource.data.agentId == request.auth.uid
+        && request.resource.data.sale.operationId == intentId
+        && request.resource.data.sale.agentId == request.auth.uid
+        && request.resource.data.sale.createdBy == request.auth.uid
+        && validSaleShape(request.resource.data.sale)
+        && validSaleClient(request.resource.data.sale);
+
+      allow update: if isSignedIn()
+        && resource.data.status == 'prepared'
+        && resource.data.agentId == request.auth.uid
+        && request.resource.data.keys().hasAll(['status', 'agentId', 'sale'])
+        && request.resource.data.keys().hasOnly(['status', 'agentId', 'sale'])
+        && request.resource.data.status == 'consumed'
+        && request.resource.data.agentId == resource.data.agentId
+        && request.resource.data.sale == resource.data.sale
+        && getAfter(/databases/$(database)/documents/sales/$(intentId)).data == resource.data.sale;
+
+      allow delete: if false;
+    }
+
 
     match /{document=**} {
       allow read, write: if false;

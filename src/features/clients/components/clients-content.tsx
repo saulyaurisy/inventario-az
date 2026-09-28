@@ -52,7 +52,7 @@ function ClientActions({ busy, client, onDetail, onEdit, onToggle }: ClientActio
 }
 
 export function ClientsContent() {
-  const { user } = useAuth();
+  const { profile, user } = useAuth();
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -276,7 +276,7 @@ export function ClientsContent() {
       </div>
 
       {dialogOpen ? <ClientDialog key={editingClient?.id ?? "new-client"} client={editingClient} onClose={() => setDialogOpen(false)} onSubmit={handleSave} /> : null}
-      {detailClient ? <ClientDetailDialog client={detailClient} onClose={() => setDetailClient(null)} /> : null}
+      {detailClient && profile && user ? <ClientDetailDialog actorLabel={profile.displayName} actorUid={user.uid} client={detailClient} onClose={() => setDetailClient(null)} role={profile.role} /> : null}
     </section>
   );
 }
