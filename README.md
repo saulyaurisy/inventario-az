@@ -2,7 +2,7 @@
 
 Aplicación modular de ventas e inventario construida con Next.js, TypeScript, Tailwind CSS y Firebase.
 
-Actualmente incluye autenticación con email y contraseña, perfiles almacenados en Firestore, roles `admin` y `agent`, control de usuarios activos, sesión persistente, layout autenticado, productos, clientes, inventario, Kardex, reposiciones, ventas, proveedores y compras. El módulo de reportes todavía no está implementado.
+Actualmente incluye autenticación con email y contraseña, perfiles almacenados en Firestore, roles `admin` y `agent`, control de usuarios activos, sesión persistente, layout autenticado, productos, clientes, inventario, Kardex, reposiciones, ventas, proveedores, compras, comprobantes de pago y dashboard operativo. El módulo de reportes todavía no está implementado.
 
 ## Requisitos
 
@@ -219,6 +219,14 @@ firebase deploy --only auth,firestore:rules
 - La numeración `C-000001` usa `system_counters/purchases`; se reserva antes de crear el borrador y permanece estable. Puede dejar huecos si la validación posterior del borrador falla, sin afectar stock ni movimientos.
 
 > Nota técnica: actualmente se soporta la recepción segura de compras de 1 producto. La UI permite preparar borradores de hasta 3 productos, pero la recepción multi-producto queda pendiente de una operación backend privilegiada, como Admin SDK o Cloud Functions, porque las validaciones cruzadas superan el límite de accesos documentales de Firestore Security Rules. Esta limitación conserva la atomicidad y la seguridad: una recepción rechazada no modifica stock ni crea movimientos parciales. No se habilitó Blaze ni ninguna cuenta de facturación.
+
+## Dashboard operativo
+
+- `/dashboard` consolida en tiempo real datos existentes de ventas, compras, inventario, reposiciones, clientes y comprobantes; no crea colecciones de métricas ni duplica fuentes de verdad.
+- El administrador ve métricas globales. El agente consulta ventas, inventario, reposiciones y comprobantes filtrados por su UID antes de descargar datos; los clientes visibles respetan las reglas vigentes.
+- Incluye períodos locales predefinidos, ventas netas, ticket promedio, compras recibidas, stock y alertas, actividad reciente, gráfica diaria, top de productos y top de clientes.
+- Las ventas canceladas no forman parte de los importes netos. El stock bajo se define como `quantity <= minimumStock`; con mínimo cero, solo una cantidad cero activa la condición.
+- La actividad visible se limita a los 12 eventos más recientes después de componer las consultas autorizadas. El volumen actual permite agrupar en cliente sin métricas precalculadas; no se añadieron índices, reglas, dependencias, Storage, Functions ni Blaze.
 
 ## Ejecución
 
