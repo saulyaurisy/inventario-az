@@ -7,7 +7,7 @@ import type {
   SaleItem,
 } from "../types/sale.types";
 
-export const MAX_AGENT_DISCOUNT_PERCENTAGE = 20;
+export const MAX_AGENT_DISCOUNT_PERCENTAGE = 35;
 export const MAX_SALE_ITEMS = 3;
 
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {

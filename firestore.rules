@@ -819,7 +819,7 @@ service cloud.firestore {
         && data.total is int
         && data.total == data.subtotal - data.totalDiscount
         && data.total >= 0
-        && data.totalDiscount * 100 <= data.subtotal * 20
+        && data.totalDiscount * 100 <= data.subtotal * 35
         && (
           !data.keys().hasAny(['globalDiscountType', 'globalDiscountValue'])
           || data.keys().hasAll(['globalDiscountType', 'globalDiscountValue'])

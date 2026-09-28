@@ -34,6 +34,7 @@ import {
   calculateSale,
   formatSaleNumber,
   getSaleMovementId,
+  MAX_AGENT_DISCOUNT_PERCENTAGE,
 } from "../utils/sale-utils";
 
 export class SaleValidationError extends Error {}
@@ -523,7 +524,7 @@ export function getSaleErrorMessage(error: unknown): string {
     return "Tu usuario no es un agente activo autorizado para vender.";
   }
   if (error instanceof SaleDiscountLimitError) {
-    return "El descuento total del agente no puede superar el 20% del subtotal.";
+    return `El descuento total del agente no puede superar el ${MAX_AGENT_DISCOUNT_PERCENTAGE}% del subtotal.`;
   }
   if (error instanceof SaleValidationError) {
     return "Revisa cantidades, productos, descuentos y datos de pago.";
