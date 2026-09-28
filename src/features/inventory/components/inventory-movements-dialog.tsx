@@ -9,6 +9,7 @@ const MOVEMENT_LABELS: Record<InventoryMovement["type"], string> = {
   replenishment_out: "Salida por reposición",
   replenishment_in: "Entrada por reposición",
   sale: "Venta",
+  purchase_in: "Entrada por compra",
 };
 
 interface InventoryMovementsDialogProps {

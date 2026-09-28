@@ -2,7 +2,7 @@
 
 Aplicación modular de ventas e inventario construida con Next.js, TypeScript, Tailwind CSS y Firebase.
 
-Actualmente incluye autenticación con email y contraseña, perfiles almacenados en Firestore, roles `admin` y `agent`, control de usuarios activos, sesión persistente, layout autenticado, gestión del catálogo de productos, directorio de clientes, inventario por empresa y agente, Kardex de movimientos, reposiciones de empresa a agente y ventas. El módulo de reportes todavía no está implementado.
+Actualmente incluye autenticación con email y contraseña, perfiles almacenados en Firestore, roles `admin` y `agent`, control de usuarios activos, sesión persistente, layout autenticado, productos, clientes, inventario, Kardex, reposiciones, ventas, proveedores y compras. El módulo de reportes todavía no está implementado.
 
 ## Requisitos
 
@@ -200,6 +200,16 @@ firebase deploy --only auth,firestore:rules
 - Por el límite de lecturas de seguridad de Firestore, cada venta admite de 1 a 3 productos distintos. El número se reserva mediante `system_counters/sales`; sigue siendo único y creciente, aunque puede tener huecos si una venta preparada finalmente falla. Esta implementación no incluye anulación de ventas ni movimientos de retorno.
 
 > Nota técnica: máximo seguro de 3 productos por venta con las reglas Firestore actuales.
+
+## Proveedores y compras
+
+- `/suppliers` y `/purchases` son módulos administrativos separados e integrados. Los proveedores se desactivan sin borrado físico.
+- Crear o editar un borrador no modifica stock. Recibir una compra incrementa exclusivamente inventario de empresa y crea un movimiento inmutable `purchase_in` por producto en una sola transacción.
+- Los costos se guardan históricamente en céntimos dentro de la compra. La recepción no modifica automáticamente `product.costPrice`, porque la valoración o costo promedio queda fuera del alcance.
+- Los movimientos usan IDs determinísticos `purchase__{purchaseId}__{productId}`. Una compra recibida queda inmutable y no puede recibirse de nuevo.
+- La numeración `C-000001` usa `system_counters/purchases`; se reserva antes de crear el borrador y permanece estable. Puede dejar huecos si la validación posterior del borrador falla, sin afectar stock ni movimientos.
+
+> Nota técnica: actualmente se soporta la recepción segura de compras de 1 producto. La UI permite preparar borradores de hasta 3 productos, pero la recepción multi-producto queda pendiente de una operación backend privilegiada, como Admin SDK o Cloud Functions, porque las validaciones cruzadas superan el límite de accesos documentales de Firestore Security Rules. Esta limitación conserva la atomicidad y la seguridad: una recepción rechazada no modifica stock ni crea movimientos parciales. No se habilitó Blaze ni ninguna cuenta de facturación.
 
 ## Ejecución
 

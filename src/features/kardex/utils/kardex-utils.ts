@@ -10,6 +10,7 @@ const INBOUND_TYPES = new Set([
   "initial",
   "adjustment_in",
   "replenishment_in",
+  "purchase_in",
   "return",
   "purchase",
 ]);
@@ -28,6 +29,7 @@ const MOVEMENT_LABELS: Record<string, string> = {
   replenishment_out: "Salida por reposición",
   return: "Devolución",
   purchase: "Compra",
+  purchase_in: "Entrada por compra",
 };
 
 export function getKardexMovementDirection(

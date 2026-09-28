@@ -1,0 +1,36 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+
+import { useAuth } from "@/features/auth";
+
+import { createSupplier, getSupplierErrorMessage, listSuppliers, setSupplierActive, updateSupplier } from "../services/suppliers.service";
+import type { Supplier, SupplierInput } from "../types/supplier.types";
+import { SupplierDetailDialog } from "./supplier-detail-dialog";
+import { SupplierFormDialog } from "./supplier-form-dialog";
+
+export function SuppliersContent() {
+  const { user } = useAuth();
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [formTarget, setFormTarget] = useState<Supplier | "new" | null>(null);
+  const [detail, setDetail] = useState<Supplier | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const load = useCallback(async () => { setLoading(true); setError(null); try { setSuppliers(await listSuppliers()); } catch (cause) { setError(getSupplierErrorMessage(cause)); } finally { setLoading(false); } }, []);
+  useEffect(() => {
+    let ignore = false;
+    listSuppliers()
+      .then((nextSuppliers) => { if (!ignore) setSuppliers(nextSuppliers); })
+      .catch((cause: unknown) => { if (!ignore) setError(getSupplierErrorMessage(cause)); })
+      .finally(() => { if (!ignore) setLoading(false); });
+    return () => { ignore = true; };
+  }, []);
+  const filtered = useMemo(() => { const term = search.trim().toLocaleLowerCase("es"); return suppliers.filter((supplier) => !term || [supplier.name, supplier.taxId, supplier.contactName, supplier.phone, supplier.email].some((value) => value?.toLocaleLowerCase("es").includes(term))); }, [search, suppliers]);
+  async function save(input: SupplierInput) { if (!user) return; try { if (formTarget === "new") await createSupplier(input, user.uid); else if (formTarget) await updateSupplier(formTarget.id, input, user.uid); setFormTarget(null); setNotice(formTarget === "new" ? "Proveedor creado." : "Proveedor actualizado."); await load(); } catch (cause) { throw new Error(getSupplierErrorMessage(cause)); } }
+  async function toggle(supplier: Supplier) { if (!user) return; setBusy(supplier.id); setError(null); try { await setSupplierActive(supplier.id, !supplier.active, user.uid); setNotice(supplier.active ? "Proveedor desactivado." : "Proveedor activado."); await load(); } catch (cause) { setError(getSupplierErrorMessage(cause)); } finally { setBusy(null); } }
+  const Actions = ({ supplier }: { supplier: Supplier }) => <div className="flex flex-wrap gap-2"><button className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold" onClick={() => setDetail(supplier)} type="button">Ver detalle</button><button className="rounded-lg border border-blue-200 px-3 py-2 text-xs font-semibold text-blue-700" onClick={() => setFormTarget(supplier)} type="button">Editar</button><button className={supplier.active ? "rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700" : "rounded-lg border border-emerald-200 px-3 py-2 text-xs font-semibold text-emerald-700"} disabled={busy === supplier.id} onClick={() => void toggle(supplier)} type="button">{supplier.active ? "Desactivar" : "Activar"}</button></div>;
+  return <section aria-labelledby="suppliers-title"><div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm"><div className="flex flex-col gap-5 border-b border-slate-100 bg-gradient-to-br from-white to-emerald-50/70 p-6 sm:flex-row sm:items-end sm:justify-between sm:p-8"><div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Abastecimiento</p><h2 className="mt-2 text-3xl font-bold" id="suppliers-title">Proveedores</h2><p className="mt-2 text-sm text-slate-600">Gestiona proveedores sin eliminaciones físicas.</p></div><button className="rounded-xl bg-emerald-700 px-5 py-3 text-sm font-semibold text-white" onClick={() => setFormTarget("new")} type="button">+ Nuevo proveedor</button></div><div className="space-y-6 p-5 sm:p-8"><div><label className="text-sm font-semibold" htmlFor="supplier-search">Buscar</label><input className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm" id="supplier-search" onChange={(event) => setSearch(event.target.value)} placeholder="Nombre, RUC, contacto, teléfono o email" type="search" value={search} /></div>{notice ? <p className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-900" role="status">{notice}</p> : null}{error ? <p className="rounded-xl bg-red-50 p-3 text-sm text-red-800" role="alert">{error}</p> : null}{loading ? <p className="py-10 text-center text-sm text-slate-600">Cargando proveedores...</p> : filtered.length === 0 ? <p className="rounded-2xl border border-dashed border-slate-300 p-10 text-center text-sm text-slate-600">No hay proveedores para mostrar.</p> : <><p className="text-sm text-slate-500">{filtered.length} proveedores</p><div className="hidden overflow-x-auto rounded-2xl border border-slate-200 lg:block"><table className="min-w-full divide-y divide-slate-200 text-left text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Proveedor</th><th className="px-4 py-3">RUC</th><th className="px-4 py-3">Contacto</th><th className="px-4 py-3">Teléfono</th><th className="px-4 py-3">Email</th><th className="px-4 py-3">Estado</th><th className="px-4 py-3">Acciones</th></tr></thead><tbody className="divide-y divide-slate-100">{filtered.map((supplier) => <tr key={supplier.id}><td className="px-4 py-4 font-bold">{supplier.name}</td><td className="px-4 py-4">{supplier.taxId || "—"}</td><td className="px-4 py-4">{supplier.contactName || "—"}</td><td className="px-4 py-4">{supplier.phone || "—"}</td><td className="px-4 py-4">{supplier.email || "—"}</td><td className="px-4 py-4"><span className={supplier.active ? "rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-800" : "rounded-full bg-slate-200 px-3 py-1 text-xs font-bold text-slate-700"}>{supplier.active ? "Activo" : "Inactivo"}</span></td><td className="px-4 py-4"><Actions supplier={supplier} /></td></tr>)}</tbody></table></div><div className="grid gap-4 lg:hidden">{filtered.map((supplier) => <article className="rounded-2xl border border-slate-200 p-4" key={supplier.id}><div className="flex items-start justify-between gap-3"><div><h3 className="font-bold">{supplier.name}</h3><p className="text-xs text-slate-500">{supplier.taxId || "Sin RUC"}</p></div><span className={supplier.active ? "text-xs font-bold text-emerald-700" : "text-xs font-bold text-slate-500"}>{supplier.active ? "Activo" : "Inactivo"}</span></div><p className="mt-3 text-sm">{supplier.contactName || "Sin contacto"} · {supplier.phone || "Sin teléfono"}</p><div className="mt-4 border-t border-slate-100 pt-4"><Actions supplier={supplier} /></div></article>)}</div></>}</div></div>{formTarget ? <SupplierFormDialog initial={formTarget === "new" ? undefined : formTarget} onClose={() => setFormTarget(null)} onSubmit={save} /> : null}{detail ? <SupplierDetailDialog onClose={() => setDetail(null)} supplier={detail} /> : null}</section>;
+}

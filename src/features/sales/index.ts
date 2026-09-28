@@ -14,4 +14,5 @@ export {
   MAX_AGENT_DISCOUNT_PERCENTAGE,
   MAX_SALE_ITEMS,
   PAYMENT_METHOD_LABELS,
+  toCents,
 } from "./utils/sale-utils";
