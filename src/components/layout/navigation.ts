@@ -22,6 +22,7 @@ export const NAVIGATION_ITEMS: readonly NavigationItem[] = [
     roles: ALL_ROLES,
   },
   { label: "Ventas", shortLabel: "VE", href: "/sales", roles: ALL_ROLES },
+  { label: "Comprobantes", shortLabel: "CP", href: "/payment-proofs", roles: ["admin"] },
   { label: "Proveedores", shortLabel: "PV", href: "/suppliers", roles: ["admin"] },
   { label: "Compras", shortLabel: "CO", href: "/purchases", roles: ["admin"] },
   { label: "Reportes", shortLabel: "RP", href: "/reports", roles: ["admin"] },

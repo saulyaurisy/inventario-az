@@ -201,6 +201,15 @@ firebase deploy --only auth,firestore:rules
 
 > Nota técnica: máximo seguro de 3 productos por venta con las reglas Firestore actuales.
 
+## Comprobantes de pago
+
+- `sale_payment_proofs/{saleId}` conserva únicamente metadata y referencias de evidencia de pago. El ID determinístico limita el MVP a un comprobante activo por venta y evita una colección de unicidad adicional.
+- El agente registra o corrige el comprobante de una venta propia; `agentId`, `clientId`, `paymentMethod` y `amount` se copian de la venta y se validan nuevamente en Firestore Rules. El formulario no permite introducirlos.
+- El administrador puede verificar o rechazar con un motivo obligatorio. Un comprobante verificado queda inmutable; uno rechazado puede ser corregido por su agente y volver a estado `provided`.
+- Si una venta está anulada, el comprobante existente sigue visible para auditoría, pero no se permite crear, corregir, verificar ni rechazar. La ausencia de comprobante nunca bloquea una venta.
+- La prueba dinámica sobre una venta anulada no se ejecutó por falta de un fixture real; las reglas de Firestore y la interfaz bloquean nuevas acciones sobre comprobantes en ese estado.
+- Las URL externas son opcionales, deben usar HTTPS y se muestran como enlaces explícitos; no se descargan ni se incrustan. No se usa Firebase Storage, archivos binarios, Cloud Functions, Blaze ni facturación.
+
 ## Proveedores y compras
 
 - `/suppliers` y `/purchases` son módulos administrativos separados e integrados. Los proveedores se desactivan sin borrado físico.

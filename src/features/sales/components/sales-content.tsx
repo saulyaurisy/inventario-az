@@ -119,6 +119,6 @@ export function SalesContent() {
     </div>
   </div>
   {formOpen ? <SaleFormDialog clients={clients} inventory={inventory.filter((record) => record.ownerType === "agent" && record.ownerId === user.uid)} onClose={() => setFormOpen(false)} onSubmit={handleCreate} products={products} /> : null}
-  {selectedSale ? <SaleDetailDialog agentLabel={agentLabels[selectedSale.agentId] ?? selectedSale.agentId} onClose={() => setSelectedSale(null)} sale={selectedSale} /> : null}
+  {selectedSale ? <SaleDetailDialog actorUid={user.uid} agentLabel={agentLabels[selectedSale.agentId] ?? selectedSale.agentId} onClose={() => setSelectedSale(null)} role={profile.role} sale={selectedSale} /> : null}
   </section>;
 }

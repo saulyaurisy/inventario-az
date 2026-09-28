@@ -934,6 +934,90 @@ service cloud.firestore {
         && saleItemMatchesProduct(intent.sale.items, data, product);
     }
 
+    function validPaymentProofShape(data) {
+      return data.keys().hasAll([
+          'saleId', 'agentId', 'clientId', 'status', 'type',
+          'paymentMethod', 'amount', 'createdBy', 'createdAt', 'updatedAt'
+        ])
+        && data.saleId is string
+        && data.agentId is string
+        && data.clientId is string
+        && data.status in ['provided', 'verified', 'rejected']
+        && data.type in ['operation_reference', 'external_link', 'manual_note']
+        && data.paymentMethod in ['cash', 'yape', 'plin', 'bank_transfer', 'card', 'other']
+        && data.amount is int
+        && data.amount >= 0
+        && data.createdBy is string
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && (!data.keys().hasAny(['operationReference'])
+          || data.operationReference is string
+            && data.operationReference.size() > 0
+            && data.operationReference.size() <= 100)
+        && (!data.keys().hasAny(['externalUrl'])
+          || data.externalUrl is string
+            && data.externalUrl.size() <= 500
+            && data.externalUrl.matches('^https://.+'))
+        && (!data.keys().hasAny(['notes'])
+          || data.notes is string
+            && data.notes.size() > 0
+            && data.notes.size() <= 500)
+        && (data.type != 'operation_reference' || data.keys().hasAny(['operationReference']))
+        && (data.type != 'external_link' || data.keys().hasAny(['externalUrl']))
+        && (data.type != 'manual_note' || data.keys().hasAny(['notes']))
+        && (
+          data.status == 'provided'
+            && data.keys().hasOnly([
+              'saleId', 'agentId', 'clientId', 'status', 'type',
+              'paymentMethod', 'amount', 'operationReference', 'externalUrl',
+              'notes', 'createdBy', 'createdAt', 'updatedAt'
+            ])
+          || data.status == 'verified'
+            && data.keys().hasAll(['verifiedBy', 'verifiedAt'])
+            && data.keys().hasOnly([
+              'saleId', 'agentId', 'clientId', 'status', 'type',
+              'paymentMethod', 'amount', 'operationReference', 'externalUrl',
+              'notes', 'createdBy', 'createdAt', 'updatedAt',
+              'verifiedBy', 'verifiedAt'
+            ])
+            && data.verifiedBy is string
+            && data.verifiedAt is timestamp
+          || data.status == 'rejected'
+            && data.keys().hasAll(['rejectedBy', 'rejectedAt', 'rejectionReason'])
+            && data.keys().hasOnly([
+              'saleId', 'agentId', 'clientId', 'status', 'type',
+              'paymentMethod', 'amount', 'operationReference', 'externalUrl',
+              'notes', 'createdBy', 'createdAt', 'updatedAt',
+              'rejectedBy', 'rejectedAt', 'rejectionReason'
+            ])
+            && data.rejectedBy is string
+            && data.rejectedAt is timestamp
+            && data.rejectionReason is string
+            && data.rejectionReason.size() > 0
+            && data.rejectionReason.size() <= 300
+        );
+    }
+
+    function paymentProofMatchesSale(proofId, data) {
+      let sale = get(/databases/$(database)/documents/sales/$(data.saleId)).data;
+      return proofId == data.saleId
+        && sale.status == 'completed'
+        && data.agentId == sale.agentId
+        && data.clientId == sale.clientId
+        && data.paymentMethod == sale.paymentMethod
+        && data.amount == sale.total;
+    }
+
+    function unchangedPaymentProofCore(before, after) {
+      return after.saleId == before.saleId
+        && after.agentId == before.agentId
+        && after.clientId == before.clientId
+        && after.paymentMethod == before.paymentMethod
+        && after.amount == before.amount
+        && after.createdBy == before.createdBy
+        && after.createdAt == before.createdAt;
+    }
+
     match /users/{userId} {
       allow read: if isSignedIn()
         && (request.auth.uid == userId || isAdmin());
@@ -1264,6 +1348,59 @@ service cloud.firestore {
             && request.resource.data.updatedAt == request.time
             && validActivePurchaseSupplier(request.resource.data)
             && validAllPurchaseReceivedItems(purchaseId, request.resource.data.items)
+        );
+
+      allow delete: if false;
+    }
+
+    match /sale_payment_proofs/{proofId} {
+      allow get: if isSignedIn() && resource == null
+        || isAdmin()
+        || isAgent() && resource.data.agentId == request.auth.uid;
+
+      allow list: if isAdmin()
+        || isAgent() && resource.data.agentId == request.auth.uid;
+
+      allow create: if isAgent()
+        && validPaymentProofShape(request.resource.data)
+        && request.resource.data.status == 'provided'
+        && request.resource.data.agentId == request.auth.uid
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && paymentProofMatchesSale(proofId, request.resource.data);
+
+      allow update: if validPaymentProofShape(request.resource.data)
+        && unchangedPaymentProofCore(resource.data, request.resource.data)
+        && paymentProofMatchesSale(proofId, request.resource.data)
+        && (
+          isAgent()
+            && resource.data.agentId == request.auth.uid
+            && resource.data.status in ['provided', 'rejected']
+            && request.resource.data.status == 'provided'
+            && request.resource.data.updatedAt == request.time
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'status', 'type', 'operationReference', 'externalUrl', 'notes',
+              'updatedAt', 'rejectedBy', 'rejectedAt', 'rejectionReason'
+            ])
+          || isAdmin()
+            && resource.data.status == 'provided'
+            && request.resource.data.status == 'verified'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'status', 'verifiedBy', 'verifiedAt', 'updatedAt'
+            ])
+            && request.resource.data.verifiedBy == request.auth.uid
+            && request.resource.data.verifiedAt == request.time
+            && request.resource.data.updatedAt == request.time
+          || isAdmin()
+            && resource.data.status == 'provided'
+            && request.resource.data.status == 'rejected'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'status', 'rejectedBy', 'rejectedAt', 'rejectionReason', 'updatedAt'
+            ])
+            && request.resource.data.rejectedBy == request.auth.uid
+            && request.resource.data.rejectedAt == request.time
+            && request.resource.data.updatedAt == request.time
         );
 
       allow delete: if false;

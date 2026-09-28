@@ -7,6 +7,7 @@ export type {
   SaleDraftItem,
   SaleItem,
   SaleStatus,
+  SaleUser,
 } from "./types/sale.types";
 export {
   calculateSale,
