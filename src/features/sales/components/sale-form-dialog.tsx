@@ -6,8 +6,8 @@ import type { Client } from "@/features/clients";
 import type { InventoryRecord } from "@/features/inventory";
 import type { Product } from "@/features/products";
 
-import type { CreateSaleInput, DiscountType, PaymentMethod, SaleDraftItem } from "../types/sale.types";
-import { calculateSale, formatMoney, MAX_AGENT_DISCOUNT_PERCENTAGE, MAX_SALE_ITEMS, PAYMENT_METHOD_LABELS } from "../utils/sale-utils";
+import type { CreateSaleInput, DiscountType, PaymentMethod, SaleDraftItem, SalePayment } from "../types/sale.types";
+import { calculateSale, formatMoney, MAX_AGENT_DISCOUNT_PERCENTAGE, MAX_SALE_ITEMS, MAX_SALE_PAYMENTS, PAYMENT_METHOD_LABELS, toCents } from "../utils/sale-utils";
 
 interface SaleFormDialogProps {
   clients: Client[];
@@ -21,7 +21,18 @@ type SaleFormItem = Omit<SaleDraftItem, "discountValue"> & {
   discountValue?: string;
 };
 
+interface PaymentRow {
+  amount: string;
+  method: PaymentMethod;
+  reference: string;
+}
+
 const EMPTY_ITEM: SaleFormItem = { productId: "", quantity: 1 };
+const INITIAL_PAYMENT_ROWS: PaymentRow[] = [
+  { amount: "", method: "yape", reference: "" },
+  { amount: "", method: "cash", reference: "" },
+];
+const REFERENCE_PAYMENT_METHODS = new Set<PaymentMethod>(["yape", "plin", "bank_transfer", "card", "bonus", "other"]);
 const DISCOUNT_TYPES: { label: string; value: "none" | DiscountType }[] = [
   { label: "Sin descuento", value: "none" },
   { label: "Porcentaje", value: "percentage" },
@@ -35,6 +46,8 @@ export function SaleFormDialog({ clients, inventory, onClose, onSubmit, products
   const [globalDiscountValue, setGlobalDiscountValue] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
   const [paymentReference, setPaymentReference] = useState("");
+  const [combinedPayment, setCombinedPayment] = useState(false);
+  const [paymentRows, setPaymentRows] = useState<PaymentRow[]>(INITIAL_PAYMENT_ROWS);
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -68,6 +81,50 @@ export function SaleFormDialog({ clients, inventory, onClose, onSubmit, products
     }
   }, [clientId, draftItems, globalDiscountType, operationId, parsedGlobalDiscountValue, paymentMethod, productMap, stockByProduct]);
 
+  const paymentAllocation = useMemo(() => {
+    if (!combinedPayment || !summary) return { error: null, paid: 0, payments: undefined, remaining: summary?.total ?? 0 };
+    const methods = new Set<PaymentMethod>();
+    const payments: SalePayment[] = [];
+    let editableTotal = 0;
+    let error: string | null = null;
+
+    paymentRows.forEach((row, index) => {
+      if (methods.has(row.method)) error ??= "No puedes repetir un método de pago.";
+      methods.add(row.method);
+      if (index === paymentRows.length - 1) return;
+      const parsed = row.amount.trim() ? Number(row.amount) : Number.NaN;
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        error ??= "Cada forma de pago debe tener un monto mayor a cero.";
+        return;
+      }
+      const amount = toCents(parsed);
+      if (amount <= 0) {
+        error ??= "Cada forma de pago debe tener un monto mayor a cero.";
+        return;
+      }
+      editableTotal += amount;
+      payments.push({ method: row.method, amount, ...(row.reference.trim() ? { reference: row.reference.trim() } : {}) });
+    });
+
+    const rawRemaining = summary.total - editableTotal;
+    if (rawRemaining < 0) error ??= "La suma de los pagos editables supera el total de la venta.";
+    if (rawRemaining === 0) error ??= "El último método debe cubrir un saldo mayor a cero.";
+    const remaining = Math.max(rawRemaining, 0);
+    const lastRow = paymentRows.at(-1);
+    if (!lastRow || paymentRows.length < 2 || paymentRows.length > MAX_SALE_PAYMENTS) {
+      error ??= "Configura entre 2 y 3 formas de pago.";
+    } else if (remaining > 0) {
+      payments.push({ method: lastRow.method, amount: remaining, ...(lastRow.reference.trim() ? { reference: lastRow.reference.trim() } : {}) });
+    }
+
+    return {
+      error,
+      paid: editableTotal + remaining,
+      payments: error ? undefined : payments,
+      remaining: Math.max(summary.total - editableTotal - remaining, 0),
+    };
+  }, [combinedPayment, paymentRows, summary]);
+
   function updateItem(index: number, patch: Partial<SaleFormItem>) {
     setError(null);
     setItems((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item));
@@ -88,6 +145,30 @@ export function SaleFormDialog({ clients, inventory, onClose, onSubmit, products
     return Number.isFinite(parsed) ? String(parsed) : value;
   }
 
+  function updatePaymentRow(index: number, patch: Partial<PaymentRow>) {
+    setError(null);
+    setPaymentRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, ...patch } : row));
+  }
+
+  function addPaymentRow() {
+    if (!summary || paymentRows.length >= MAX_SALE_PAYMENTS || paymentAllocation.error) return;
+    const usedMethods = new Set(paymentRows.map((row) => row.method));
+    const nextMethod = (Object.keys(PAYMENT_METHOD_LABELS) as PaymentMethod[]).find((method) => !usedMethods.has(method));
+    if (!nextMethod) return;
+    setError(null);
+    setPaymentRows((current) => [
+      ...current.slice(0, -1),
+      { amount: "", method: nextMethod, reference: "" },
+      current[current.length - 1],
+    ]);
+  }
+
+  function removePaymentRow(index: number) {
+    if (paymentRows.length <= 2) return;
+    setError(null);
+    setPaymentRows((current) => current.filter((_, rowIndex) => rowIndex !== index));
+  }
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
@@ -95,6 +176,13 @@ export function SaleFormDialog({ clients, inventory, onClose, onSubmit, products
       setError("Completa la venta con cantidades, productos y descuentos válidos.");
       return;
     }
+    if (combinedPayment && (!paymentAllocation.payments || paymentAllocation.error)) {
+      setError(paymentAllocation.error ?? "Completa correctamente las formas de pago.");
+      return;
+    }
+    const payments = combinedPayment ? paymentAllocation.payments : undefined;
+    const canonicalPaymentMethod = payments?.[0].method ?? paymentMethod;
+    const canonicalPaymentReference = payments ? payments[0].reference : paymentReference.trim();
     setSaving(true);
     try {
       await onSubmit({
@@ -102,8 +190,9 @@ export function SaleFormDialog({ clients, inventory, onClose, onSubmit, products
         clientId,
         items: draftItems,
         ...(globalDiscountType !== "none" ? { globalDiscountType, globalDiscountValue: parsedGlobalDiscountValue } : {}),
-        paymentMethod,
-        ...(paymentReference.trim() ? { paymentReference: paymentReference.trim() } : {}),
+        paymentMethod: canonicalPaymentMethod,
+        ...(canonicalPaymentReference ? { paymentReference: canonicalPaymentReference } : {}),
+        ...(payments ? { payments } : {}),
         ...(notes.trim() ? { notes: notes.trim() } : {}),
       });
     } catch (cause) {
@@ -140,12 +229,32 @@ export function SaleFormDialog({ clients, inventory, onClose, onSubmit, products
 
           <div className="grid gap-4 rounded-2xl border border-slate-200 p-4 md:grid-cols-2"><div><label className="text-sm font-semibold text-slate-800" htmlFor="global-discount-type">Descuento global</label><select className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm" id="global-discount-type" onChange={(event) => { setError(null); setGlobalDiscountType(event.target.value as "none" | DiscountType); setGlobalDiscountValue(""); }} value={globalDiscountType}>{DISCOUNT_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}</select></div><div><label className="text-sm font-semibold text-slate-800" htmlFor="global-discount-value">Valor global</label><input className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm disabled:bg-slate-100" disabled={globalDiscountType === "none"} id="global-discount-value" min="0" onBlur={(event) => setGlobalDiscountValue(normalizeNumericInput(event.target.value))} onChange={(event) => { setError(null); setGlobalDiscountValue(event.target.value); }} step="0.01" type="number" value={globalDiscountValue} /></div></div>
 
-          <div className="grid gap-4 md:grid-cols-2"><div><label className="text-sm font-semibold text-slate-800" htmlFor="payment-method">Método de pago</label><select className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm" id="payment-method" onChange={(event) => { setError(null); setPaymentMethod(event.target.value as PaymentMethod); }} value={paymentMethod}>{Object.entries(PAYMENT_METHOD_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div><div><label className="text-sm font-semibold text-slate-800" htmlFor="payment-reference">Referencia de pago</label><input className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm" id="payment-reference" maxLength={100} onChange={(event) => { setError(null); setPaymentReference(event.target.value); }} placeholder="Opcional" value={paymentReference} /></div></div>
+          <section className="space-y-4 rounded-2xl border border-slate-200 p-4" aria-labelledby="sale-payment-title">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div><h3 className="font-bold text-slate-950" id="sale-payment-title">Pago</h3><p className="mt-1 text-xs text-slate-500">Usa un método o distribuye el total entre 2 o 3 formas de pago.</p></div>
+              <label className="inline-flex cursor-pointer items-center gap-3 rounded-xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-800"><input checked={combinedPayment} className="size-4 accent-emerald-700" onChange={(event) => { setError(null); setCombinedPayment(event.target.checked); }} type="checkbox" />Pago combinado</label>
+            </div>
+            {!combinedPayment ? <div className="grid gap-4 md:grid-cols-2"><div><label className="text-sm font-semibold text-slate-800" htmlFor="payment-method">Método de pago</label><select className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm" id="payment-method" onChange={(event) => { setError(null); setPaymentMethod(event.target.value as PaymentMethod); }} value={paymentMethod}>{Object.entries(PAYMENT_METHOD_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div><div><label className="text-sm font-semibold text-slate-800" htmlFor="payment-reference">Referencia de pago</label><input className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm" id="payment-reference" maxLength={100} onChange={(event) => { setError(null); setPaymentReference(event.target.value); }} placeholder="Opcional" value={paymentReference} /></div></div> : <div className="space-y-3">
+              <div className="flex items-center justify-between gap-3"><h4 className="text-sm font-bold text-slate-900">Formas de pago</h4>{paymentRows.length < MAX_SALE_PAYMENTS ? <button className="rounded-lg border border-emerald-300 px-3 py-2 text-xs font-semibold text-emerald-800 disabled:opacity-50" disabled={!summary || Boolean(paymentAllocation.error)} onClick={addPaymentRow} type="button">+ Agregar método</button> : null}</div>
+              {paymentRows.map((row, index) => {
+                const isLast = index === paymentRows.length - 1;
+                const usedElsewhere = new Set(paymentRows.filter((_, rowIndex) => rowIndex !== index).map((item) => item.method));
+                return <div className="grid gap-3 rounded-xl bg-slate-50 p-3 md:grid-cols-[minmax(0,1fr)_150px_minmax(0,1.4fr)_auto]" key={index}>
+                  <div><label className="text-xs font-semibold text-slate-600" htmlFor={`payment-method-${index}`}>Método</label><select className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm" id={`payment-method-${index}`} onChange={(event) => updatePaymentRow(index, { method: event.target.value as PaymentMethod, ...(event.target.value === "cash" ? { reference: "" } : {}) })} value={row.method}>{Object.entries(PAYMENT_METHOD_LABELS).map(([value, label]) => <option disabled={usedElsewhere.has(value as PaymentMethod)} key={value} value={value}>{label}</option>)}</select></div>
+                  <div><label className="text-xs font-semibold text-slate-600" htmlFor={`payment-amount-${index}`}>Monto {isLast ? "(saldo)" : ""}</label><input className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm read-only:bg-slate-100 read-only:font-semibold" id={`payment-amount-${index}`} min="0.01" onBlur={(event) => { if (!isLast) updatePaymentRow(index, { amount: normalizeNumericInput(event.target.value) }); }} onChange={(event) => { if (!isLast) updatePaymentRow(index, { amount: event.target.value }); }} readOnly={isLast} step="0.01" type="number" value={isLast ? (Math.max((summary?.total ?? 0) - paymentRows.slice(0, -1).reduce((sum, item) => { const parsed = Number(item.amount); return sum + (Number.isFinite(parsed) && parsed > 0 ? toCents(parsed) : 0); }, 0), 0) / 100).toFixed(2) : row.amount} /></div>
+                  <div>{REFERENCE_PAYMENT_METHODS.has(row.method) ? <><label className="text-xs font-semibold text-slate-600" htmlFor={`payment-reference-${index}`}>Referencia</label><input className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm" id={`payment-reference-${index}`} maxLength={100} onChange={(event) => updatePaymentRow(index, { reference: event.target.value })} placeholder="Opcional" value={row.reference} /></> : <div className="pt-6 text-xs text-slate-500">Efectivo no requiere referencia.</div>}</div>
+                  <button aria-label={`Quitar ${PAYMENT_METHOD_LABELS[row.method]}`} className="self-end rounded-xl border border-red-200 px-3 py-2.5 text-sm font-semibold text-red-700 disabled:opacity-40" disabled={paymentRows.length <= 2} onClick={() => removePaymentRow(index)} type="button">Quitar</button>
+                </div>;
+              })}
+              <div className="grid gap-3 rounded-xl bg-slate-950 p-4 text-white sm:grid-cols-3"><div><p className="text-xs text-slate-400">Total venta</p><p className="mt-1 font-bold">{formatMoney(summary?.total ?? 0)}</p></div><div><p className="text-xs text-slate-400">Total pagado</p><p className="mt-1 font-bold">{formatMoney(paymentAllocation.paid)}</p></div><div><p className="text-xs text-slate-400">Saldo restante</p><p className="mt-1 font-bold text-emerald-300">{formatMoney(paymentAllocation.remaining)}</p></div></div>
+              {paymentAllocation.error ? <p className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-900" role="alert">{paymentAllocation.error}</p> : null}
+            </div>}
+          </section>
           <div><label className="text-sm font-semibold text-slate-800" htmlFor="sale-notes">Notas</label><textarea className="mt-2 min-h-20 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm" id="sale-notes" maxLength={300} onChange={(event) => { setError(null); setNotes(event.target.value); }} value={notes} /></div>
 
           <div className="grid gap-3 rounded-2xl bg-slate-950 p-5 text-white sm:grid-cols-4"><div><p className="text-xs text-slate-400">Subtotal</p><p className="mt-1 font-bold">{formatMoney(summary?.subtotal ?? 0)}</p></div><div><p className="text-xs text-slate-400">Descuento líneas</p><p className="mt-1 font-bold">− {formatMoney(summary?.lineDiscountTotal ?? 0)}</p></div><div><p className="text-xs text-slate-400">Descuento global</p><p className="mt-1 font-bold">− {formatMoney(summary?.globalDiscountAmount ?? 0)}</p></div><div><p className="text-xs text-slate-400">Total</p><p className="mt-1 text-xl font-black text-emerald-300">{formatMoney(summary?.total ?? 0)}</p></div></div>
           {error ? <p className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-900" role="alert">{error}</p> : null}
-          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button className="rounded-xl border border-slate-300 px-5 py-3 text-sm font-semibold" disabled={saving} onClick={onClose} type="button">Cancelar</button><button className="rounded-xl bg-emerald-700 px-5 py-3 text-sm font-semibold text-white disabled:opacity-60" disabled={saving || !summary || !clientId} type="submit">{saving ? "Registrando..." : "Confirmar venta"}</button></div>
+          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button className="rounded-xl border border-slate-300 px-5 py-3 text-sm font-semibold" disabled={saving} onClick={onClose} type="button">Cancelar</button><button className="rounded-xl bg-emerald-700 px-5 py-3 text-sm font-semibold text-white disabled:opacity-60" disabled={saving || !summary || !clientId || (combinedPayment && Boolean(paymentAllocation.error))} type="submit">{saving ? "Registrando..." : "Confirmar venta"}</button></div>
         </form>
       </section>
     </div>

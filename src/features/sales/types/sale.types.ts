@@ -7,6 +7,7 @@ export type PaymentMethod =
   | "plin"
   | "bank_transfer"
   | "card"
+  | "bonus"
   | "other";
 export type DiscountType = "percentage" | "fixed";
 
@@ -30,6 +31,12 @@ export interface SaleItem {
   lineTotal: number;
 }
 
+export interface SalePayment {
+  method: PaymentMethod;
+  amount: number;
+  reference?: string;
+}
+
 export interface Sale {
   id: string;
   operationId: string;
@@ -48,6 +55,7 @@ export interface Sale {
   total: number;
   paymentMethod: PaymentMethod;
   paymentReference?: string;
+  payments?: SalePayment[];
   notes?: string;
   createdBy: string;
   createdAt: Timestamp;
@@ -72,6 +80,7 @@ export interface CreateSaleInput {
   globalDiscountValue?: number;
   paymentMethod: PaymentMethod;
   paymentReference?: string;
+  payments?: SalePayment[];
   notes?: string;
 }
 

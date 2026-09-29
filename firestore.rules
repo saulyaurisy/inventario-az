@@ -779,6 +779,36 @@ service cloud.firestore {
         + (items.size() > 2 ? items[2].discountAmount : 0);
     }
 
+    function validSalePayment(payment) {
+      return payment is map
+        && payment.keys().hasAll(['method', 'amount'])
+        && payment.keys().hasOnly(['method', 'amount', 'reference'])
+        && payment.method in ['cash', 'yape', 'plin', 'bank_transfer', 'card', 'bonus', 'other']
+        && payment.amount is int
+        && payment.amount > 0
+        && (!payment.keys().hasAny(['reference'])
+          || payment.reference is string
+            && payment.reference.size() > 0
+            && payment.reference.size() <= 100);
+    }
+
+    function validSalePayments(payments, total) {
+      return payments is list
+        && payments.size() >= 2
+        && payments.size() <= 3
+        && validSalePayment(payments[0])
+        && validSalePayment(payments[1])
+        && (payments.size() < 3 || validSalePayment(payments[2]))
+        && payments[0].method != payments[1].method
+        && (payments.size() < 3 || (
+          payments[0].method != payments[2].method
+          && payments[1].method != payments[2].method
+        ))
+        && payments[0].amount
+          + payments[1].amount
+          + (payments.size() > 2 ? payments[2].amount : 0) == total;
+    }
+
     function validSaleShape(data) {
       return data.keys().hasAll([
           'operationId', 'number', 'status', 'agentId', 'clientId',
@@ -790,7 +820,7 @@ service cloud.firestore {
           'operationId', 'number', 'status', 'agentId', 'clientId',
           'clientSnapshot', 'items', 'subtotal', 'lineDiscountTotal',
           'globalDiscountType', 'globalDiscountValue', 'globalDiscountAmount',
-          'totalDiscount', 'total', 'paymentMethod', 'paymentReference',
+          'totalDiscount', 'total', 'paymentMethod', 'paymentReference', 'payments',
           'notes', 'createdBy', 'createdAt', 'updatedAt'
         ])
         && data.operationId is string
@@ -828,8 +858,18 @@ service cloud.firestore {
             && data.globalDiscountValue >= 0
             && (data.globalDiscountType != 'percentage' || data.globalDiscountValue <= 100)
         )
-        && data.paymentMethod in ['cash', 'yape', 'plin', 'bank_transfer', 'card', 'other']
+        && data.paymentMethod in ['cash', 'yape', 'plin', 'bank_transfer', 'card', 'bonus', 'other']
         && (!data.keys().hasAny(['paymentReference']) || data.paymentReference is string && data.paymentReference.size() <= 100)
+        && (!data.keys().hasAny(['payments']) || (
+          validSalePayments(data.payments, data.total)
+          && data.paymentMethod == data.payments[0].method
+          && (
+            !data.payments[0].keys().hasAny(['reference']) && !data.keys().hasAny(['paymentReference'])
+            || data.payments[0].keys().hasAny(['reference'])
+              && data.keys().hasAny(['paymentReference'])
+              && data.paymentReference == data.payments[0].reference
+          )
+        ))
         && (!data.keys().hasAny(['notes']) || data.notes is string && data.notes.size() <= 300)
         && data.createdBy is string
         && data.createdAt is timestamp
@@ -970,7 +1010,7 @@ service cloud.firestore {
         && data.clientId is string
         && data.status in ['provided', 'verified', 'rejected']
         && data.type in ['operation_reference', 'external_link', 'manual_note']
-        && data.paymentMethod in ['cash', 'yape', 'plin', 'bank_transfer', 'card', 'other']
+        && data.paymentMethod in ['cash', 'yape', 'plin', 'bank_transfer', 'card', 'bonus', 'other']
         && data.amount is int
         && data.amount >= 0
         && data.createdBy is string

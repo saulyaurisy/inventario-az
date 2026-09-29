@@ -31,7 +31,7 @@ export class PaymentProofNotFoundError extends Error {}
 export class PaymentProofTransitionError extends Error {}
 export class PaymentProofSaleError extends Error {}
 
-const PAYMENT_METHODS: PaymentMethod[] = ["cash", "yape", "plin", "bank_transfer", "card", "other"];
+const PAYMENT_METHODS: PaymentMethod[] = ["cash", "yape", "plin", "bank_transfer", "card", "bonus", "other"];
 const PROOF_STATUSES: PaymentProofStatus[] = ["provided", "verified", "rejected"];
 const PROOF_TYPES: PaymentProofType[] = ["operation_reference", "external_link", "manual_note"];
 

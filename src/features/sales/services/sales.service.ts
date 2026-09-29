@@ -27,6 +27,7 @@ import type {
   Sale,
   SaleClientSnapshot,
   SaleItem,
+  SalePayment,
   SaleStatus,
   SaleUser,
 } from "../types/sale.types";
@@ -50,6 +51,7 @@ const PAYMENT_METHODS: PaymentMethod[] = [
   "plin",
   "bank_transfer",
   "card",
+  "bonus",
   "other",
 ];
 
@@ -117,6 +119,37 @@ function parseItems(value: unknown): SaleItem[] | null {
   return items.length === value.length ? items : null;
 }
 
+function parsePayments(value: unknown, total: number): SalePayment[] | null {
+  if (!Array.isArray(value) || value.length < 2 || value.length > 3) return null;
+  const seen = new Set<PaymentMethod>();
+  const payments = value.flatMap((payment) => {
+    if (
+      typeof payment !== "object" ||
+      payment === null ||
+      !("method" in payment) ||
+      !("amount" in payment) ||
+      !isPaymentMethod(payment.method) ||
+      seen.has(payment.method) ||
+      !Number.isInteger(payment.amount) ||
+      payment.amount <= 0 ||
+      ("reference" in payment && (
+        typeof payment.reference !== "string" ||
+        !payment.reference ||
+        payment.reference.length > 100
+      ))
+    ) return [];
+    seen.add(payment.method);
+    return [{
+      method: payment.method,
+      amount: payment.amount,
+      ...("reference" in payment ? { reference: payment.reference as string } : {}),
+    }];
+  });
+  return payments.length === value.length && payments.reduce((sum, payment) => sum + payment.amount, 0) === total
+    ? payments
+    : null;
+}
+
 function parseClientSnapshot(value: unknown): SaleClientSnapshot | null {
   if (
     typeof value !== "object" ||
@@ -139,6 +172,7 @@ function parseSale(snapshot: DocumentSnapshot): Sale {
   const data = snapshot.data();
   const items = parseItems(data?.items);
   const clientSnapshot = parseClientSnapshot(data?.clientSnapshot);
+  const payments = data?.payments === undefined ? undefined : parsePayments(data.payments, Number(data.total));
   if (
     !data ||
     typeof data.operationId !== "string" ||
@@ -153,6 +187,13 @@ function parseSale(snapshot: DocumentSnapshot): Sale {
     !Number.isInteger(data.globalDiscountAmount) ||
     !Number.isInteger(data.totalDiscount) ||
     !Number.isInteger(data.total) ||
+    payments === null ||
+    (payments !== undefined && (
+      payments[0].method !== data.paymentMethod ||
+      (payments[0].reference !== undefined
+        ? data.paymentReference !== payments[0].reference
+        : typeof data.paymentReference === "string")
+    )) ||
     !isPaymentMethod(data.paymentMethod) ||
     typeof data.createdBy !== "string" ||
     !(data.createdAt instanceof Timestamp) ||
@@ -182,6 +223,7 @@ function parseSale(snapshot: DocumentSnapshot): Sale {
     ...(typeof data.paymentReference === "string"
       ? { paymentReference: data.paymentReference }
       : {}),
+    ...(payments ? { payments } : {}),
     ...(typeof data.notes === "string" ? { notes: data.notes } : {}),
     createdBy: data.createdBy,
     createdAt: data.createdAt,
@@ -223,13 +265,34 @@ function parseInventory(snapshot: DocumentSnapshot): InventoryRecord {
 }
 
 function sanitizeInput(input: CreateSaleInput): CreateSaleInput {
+  const payments = input.payments?.map((payment) => {
+    if (!isPaymentMethod(payment.method) || !Number.isInteger(payment.amount) || payment.amount <= 0) {
+      throw new SaleValidationError();
+    }
+    const reference = payment.reference?.trim();
+    if (reference && reference.length > 100) throw new SaleValidationError();
+    return {
+      method: payment.method,
+      amount: payment.amount,
+      ...(reference ? { reference } : {}),
+    };
+  });
+  if (payments) {
+    if (payments.length < 2 || payments.length > 3 || new Set(payments.map((payment) => payment.method)).size !== payments.length) {
+      throw new SaleValidationError();
+    }
+  }
+  const canonicalPaymentMethod = payments?.[0].method ?? input.paymentMethod;
+  const canonicalPaymentReference = payments ? payments[0].reference : input.paymentReference?.trim();
   if (
     !/^[A-Za-z0-9_-]{8,100}$/.test(input.operationId) ||
     !input.clientId.trim() ||
-    !isPaymentMethod(input.paymentMethod)
+    !isPaymentMethod(canonicalPaymentMethod)
   ) throw new SaleValidationError();
-  const paymentReference = input.paymentReference?.trim();
   const notes = input.notes?.trim();
+  if ((canonicalPaymentReference && canonicalPaymentReference.length > 100) || (notes && notes.length > 300)) {
+    throw new SaleValidationError();
+  }
   return {
     operationId: input.operationId,
     clientId: input.clientId.trim(),
@@ -247,8 +310,9 @@ function sanitizeInput(input: CreateSaleInput): CreateSaleInput {
     ...(input.globalDiscountValue !== undefined
       ? { globalDiscountValue: input.globalDiscountValue }
       : {}),
-    paymentMethod: input.paymentMethod,
-    ...(paymentReference ? { paymentReference } : {}),
+    paymentMethod: canonicalPaymentMethod,
+    ...(canonicalPaymentReference ? { paymentReference: canonicalPaymentReference } : {}),
+    ...(payments ? { payments } : {}),
     ...(notes ? { notes } : {}),
   };
 }
@@ -366,6 +430,7 @@ export async function createSale(
     ...(input.paymentReference
       ? { paymentReference: input.paymentReference }
       : {}),
+    ...(input.payments ? { payments: input.payments } : {}),
     ...(input.notes ? { notes: input.notes } : {}),
     createdBy: actorUid,
     createdAt: Timestamp.now(),

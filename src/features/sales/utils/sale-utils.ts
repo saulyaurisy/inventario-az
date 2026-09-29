@@ -5,10 +5,12 @@ import type {
   DiscountType,
   PaymentMethod,
   SaleItem,
+  SalePayment,
 } from "../types/sale.types";
 
 export const MAX_AGENT_DISCOUNT_PERCENTAGE = 35;
 export const MAX_SALE_ITEMS = 3;
+export const MAX_SALE_PAYMENTS = 3;
 
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   cash: "Efectivo",
@@ -16,8 +18,31 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   plin: "Plin",
   bank_transfer: "Transferencia bancaria",
   card: "Tarjeta",
+  bonus: "Bono",
   other: "Otro",
 };
+
+export function validateSalePayments(payments: SalePayment[] | undefined, total: number): void {
+  if (!payments) return;
+  if (payments.length < 2 || payments.length > MAX_SALE_PAYMENTS) {
+    throw new Error("Invalid payments");
+  }
+  const methods = new Set<PaymentMethod>();
+  let paid = 0;
+  for (const payment of payments) {
+    if (
+      methods.has(payment.method) ||
+      !Number.isInteger(payment.amount) ||
+      payment.amount <= 0 ||
+      (payment.reference !== undefined && (!payment.reference.trim() || payment.reference.length > 100))
+    ) {
+      throw new Error("Invalid payments");
+    }
+    methods.add(payment.method);
+    paid += payment.amount;
+  }
+  if (paid !== total) throw new Error("Invalid payments");
+}
 
 export function toCents(value: number): number {
   if (!Number.isFinite(value)) throw new Error("Invalid money value");
@@ -127,6 +152,7 @@ export function calculateSale(
   ) {
     throw new Error("Agent discount limit");
   }
+  validateSalePayments(input.payments, total);
   return {
     items,
     subtotal,
