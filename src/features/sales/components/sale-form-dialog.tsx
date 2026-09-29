@@ -17,8 +17,9 @@ interface SaleFormDialogProps {
   products: Product[];
 }
 
-type SaleFormItem = Omit<SaleDraftItem, "discountValue"> & {
+type SaleFormItem = Omit<SaleDraftItem, "discountValue" | "quantity"> & {
   discountValue?: string;
+  quantity: string;
 };
 
 interface PaymentRow {
@@ -27,7 +28,7 @@ interface PaymentRow {
   reference: string;
 }
 
-const EMPTY_ITEM: SaleFormItem = { productId: "", quantity: 1 };
+const EMPTY_ITEM: SaleFormItem = { productId: "", quantity: "1" };
 const INITIAL_PAYMENT_ROWS: PaymentRow[] = [
   { amount: "", method: "yape", reference: "" },
   { amount: "", method: "cash", reference: "" },
@@ -58,7 +59,7 @@ export function SaleFormDialog({ clients, inventory, onClose, onSubmit, products
   const availableProducts = useMemo(() => products.filter((product) => product.active && (stockByProduct.get(product.id) ?? 0) > 0), [products, stockByProduct]);
   const draftItems = useMemo<SaleDraftItem[]>(() => items.map((item) => ({
     productId: item.productId,
-    quantity: item.quantity,
+    quantity: item.quantity.trim() ? Number(item.quantity) : Number.NaN,
     ...(item.discountType ? {
       discountType: item.discountType,
       discountValue: item.discountValue?.trim() ? Number(item.discountValue) : 0,
@@ -124,6 +125,8 @@ export function SaleFormDialog({ clients, inventory, onClose, onSubmit, products
       remaining: Math.max(summary.total - editableTotal - remaining, 0),
     };
   }, [combinedPayment, paymentRows, summary]);
+  const displayedTotalPaid = combinedPayment ? paymentAllocation.paid : summary?.total ?? 0;
+  const displayedRemaining = combinedPayment ? paymentAllocation.remaining : 0;
 
   function updateItem(index: number, patch: Partial<SaleFormItem>) {
     setError(null);
@@ -216,9 +219,17 @@ export function SaleFormDialog({ clients, inventory, onClose, onSubmit, products
               const stock = stockByProduct.get(item.productId) ?? 0;
               const product = productMap.get(item.productId);
               const calculatedItem = summary?.items[index];
+              const parsedQuantity = item.quantity.trim() ? Number(item.quantity) : Number.NaN;
+              const quantityError = !item.quantity.trim()
+                ? "Ingresa una cantidad."
+                : !Number.isInteger(parsedQuantity) || parsedQuantity <= 0
+                  ? "Debe ser un entero mayor a cero."
+                  : item.productId && parsedQuantity > stock
+                    ? `Supera el stock disponible (${stock}).`
+                    : null;
               return <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-[minmax(0,2fr)_100px_145px_110px_110px_auto]" key={index}>
                 <div><label className="text-xs font-semibold text-slate-600" htmlFor={`sale-product-${index}`}>Producto</label><select className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm" id={`sale-product-${index}`} onChange={(event) => updateItem(index, { productId: event.target.value })} required value={item.productId}><option value="">Seleccionar</option>{availableProducts.filter((candidate) => candidate.id === item.productId || !items.some((row, rowIndex) => rowIndex !== index && row.productId === candidate.id)).map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.sku} · {candidate.name} · Stock {stockByProduct.get(candidate.id)}</option>)}</select>{product ? <p className="mt-1 text-xs text-slate-500">SKU {product.sku} · Disponible {stock} · Precio {formatMoney(Math.round(product.salePrice * 100))}</p> : null}</div>
-                <div><label className="text-xs font-semibold text-slate-600" htmlFor={`sale-quantity-${index}`}>Cantidad</label><input className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm" id={`sale-quantity-${index}`} max={stock || undefined} min="1" onChange={(event) => updateItem(index, { quantity: Number(event.target.value) })} required step="1" type="number" value={item.quantity} /></div>
+                <div><label className="text-xs font-semibold text-slate-600" htmlFor={`sale-quantity-${index}`}>Cantidad</label><input aria-describedby={quantityError ? `sale-quantity-error-${index}` : undefined} aria-invalid={Boolean(quantityError)} className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm" id={`sale-quantity-${index}`} max={stock || undefined} min="1" onChange={(event) => updateItem(index, { quantity: event.target.value })} required step="1" type="number" value={item.quantity} />{quantityError ? <p className="mt-1 text-xs font-medium text-red-700" id={`sale-quantity-error-${index}`}>{quantityError}</p> : null}</div>
                 <div><label className="text-xs font-semibold text-slate-600" htmlFor={`sale-discount-type-${index}`}>Descuento</label><select className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm" id={`sale-discount-type-${index}`} onChange={(event) => updateDiscountType(index, event.target.value as "none" | DiscountType)} value={item.discountType ?? "none"}>{DISCOUNT_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}</select></div>
                 <div><label className="text-xs font-semibold text-slate-600" htmlFor={`sale-discount-${index}`}>Valor</label><input className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm disabled:bg-slate-100" disabled={!item.discountType} id={`sale-discount-${index}`} min="0" onBlur={(event) => updateItem(index, { discountValue: normalizeNumericInput(event.target.value) })} onChange={(event) => updateItem(index, { discountValue: event.target.value })} step="0.01" type="number" value={item.discountValue ?? ""} /></div>
                 <div><p className="text-xs font-semibold text-slate-600">Total línea</p><p className="mt-3 text-sm font-bold text-slate-950">{formatMoney(calculatedItem?.lineTotal ?? 0)}</p></div>
@@ -239,20 +250,20 @@ export function SaleFormDialog({ clients, inventory, onClose, onSubmit, products
               {paymentRows.map((row, index) => {
                 const isLast = index === paymentRows.length - 1;
                 const usedElsewhere = new Set(paymentRows.filter((_, rowIndex) => rowIndex !== index).map((item) => item.method));
+                const automaticAmount = Math.max((summary?.total ?? 0) - paymentRows.slice(0, -1).reduce((sum, item) => { const parsed = Number(item.amount); return sum + (Number.isFinite(parsed) && parsed > 0 ? toCents(parsed) : 0); }, 0), 0);
                 return <div className="grid gap-3 rounded-xl bg-slate-50 p-3 md:grid-cols-[minmax(0,1fr)_150px_minmax(0,1.4fr)_auto]" key={index}>
                   <div><label className="text-xs font-semibold text-slate-600" htmlFor={`payment-method-${index}`}>Método</label><select className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm" id={`payment-method-${index}`} onChange={(event) => updatePaymentRow(index, { method: event.target.value as PaymentMethod, ...(event.target.value === "cash" ? { reference: "" } : {}) })} value={row.method}>{Object.entries(PAYMENT_METHOD_LABELS).map(([value, label]) => <option disabled={usedElsewhere.has(value as PaymentMethod)} key={value} value={value}>{label}</option>)}</select></div>
-                  <div><label className="text-xs font-semibold text-slate-600" htmlFor={`payment-amount-${index}`}>Monto {isLast ? "(saldo)" : ""}</label><input className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm read-only:bg-slate-100 read-only:font-semibold" id={`payment-amount-${index}`} min="0.01" onBlur={(event) => { if (!isLast) updatePaymentRow(index, { amount: normalizeNumericInput(event.target.value) }); }} onChange={(event) => { if (!isLast) updatePaymentRow(index, { amount: event.target.value }); }} readOnly={isLast} step="0.01" type="number" value={isLast ? (Math.max((summary?.total ?? 0) - paymentRows.slice(0, -1).reduce((sum, item) => { const parsed = Number(item.amount); return sum + (Number.isFinite(parsed) && parsed > 0 ? toCents(parsed) : 0); }, 0), 0) / 100).toFixed(2) : row.amount} /></div>
+                  <div>{isLast ? <><p className="text-xs font-semibold text-slate-600">Saldo automático</p><output aria-label={`Saldo automático de ${PAYMENT_METHOD_LABELS[row.method]}`} className="mt-1 flex min-h-10 items-center rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm font-bold text-emerald-900">{formatMoney(automaticAmount)}</output></> : <><label className="text-xs font-semibold text-slate-600" htmlFor={`payment-amount-${index}`}>Monto</label><input className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm" id={`payment-amount-${index}`} min="0.01" onBlur={(event) => updatePaymentRow(index, { amount: normalizeNumericInput(event.target.value) })} onChange={(event) => updatePaymentRow(index, { amount: event.target.value })} step="0.01" type="number" value={row.amount} /></>}</div>
                   <div>{REFERENCE_PAYMENT_METHODS.has(row.method) ? <><label className="text-xs font-semibold text-slate-600" htmlFor={`payment-reference-${index}`}>Referencia</label><input className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm" id={`payment-reference-${index}`} maxLength={100} onChange={(event) => updatePaymentRow(index, { reference: event.target.value })} placeholder="Opcional" value={row.reference} /></> : <div className="pt-6 text-xs text-slate-500">Efectivo no requiere referencia.</div>}</div>
                   <button aria-label={`Quitar ${PAYMENT_METHOD_LABELS[row.method]}`} className="self-end rounded-xl border border-red-200 px-3 py-2.5 text-sm font-semibold text-red-700 disabled:opacity-40" disabled={paymentRows.length <= 2} onClick={() => removePaymentRow(index)} type="button">Quitar</button>
                 </div>;
               })}
-              <div className="grid gap-3 rounded-xl bg-slate-950 p-4 text-white sm:grid-cols-3"><div><p className="text-xs text-slate-400">Total venta</p><p className="mt-1 font-bold">{formatMoney(summary?.total ?? 0)}</p></div><div><p className="text-xs text-slate-400">Total pagado</p><p className="mt-1 font-bold">{formatMoney(paymentAllocation.paid)}</p></div><div><p className="text-xs text-slate-400">Saldo restante</p><p className="mt-1 font-bold text-emerald-300">{formatMoney(paymentAllocation.remaining)}</p></div></div>
               {paymentAllocation.error ? <p className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-900" role="alert">{paymentAllocation.error}</p> : null}
             </div>}
           </section>
           <div><label className="text-sm font-semibold text-slate-800" htmlFor="sale-notes">Notas</label><textarea className="mt-2 min-h-20 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm" id="sale-notes" maxLength={300} onChange={(event) => { setError(null); setNotes(event.target.value); }} value={notes} /></div>
 
-          <div className="grid gap-3 rounded-2xl bg-slate-950 p-5 text-white sm:grid-cols-4"><div><p className="text-xs text-slate-400">Subtotal</p><p className="mt-1 font-bold">{formatMoney(summary?.subtotal ?? 0)}</p></div><div><p className="text-xs text-slate-400">Descuento líneas</p><p className="mt-1 font-bold">− {formatMoney(summary?.lineDiscountTotal ?? 0)}</p></div><div><p className="text-xs text-slate-400">Descuento global</p><p className="mt-1 font-bold">− {formatMoney(summary?.globalDiscountAmount ?? 0)}</p></div><div><p className="text-xs text-slate-400">Total</p><p className="mt-1 text-xl font-black text-emerald-300">{formatMoney(summary?.total ?? 0)}</p></div></div>
+          <div className="grid gap-3 rounded-2xl bg-slate-950 p-5 text-white sm:grid-cols-2 lg:grid-cols-6"><div><p className="text-xs text-slate-400">Subtotal</p><p className="mt-1 font-bold">{formatMoney(summary?.subtotal ?? 0)}</p></div><div><p className="text-xs text-slate-400">Descuento líneas</p><p className="mt-1 font-bold">− {formatMoney(summary?.lineDiscountTotal ?? 0)}</p></div><div><p className="text-xs text-slate-400">Descuento global</p><p className="mt-1 font-bold">− {formatMoney(summary?.globalDiscountAmount ?? 0)}</p></div><div><p className="text-xs text-slate-400">Total venta</p><p className="mt-1 text-xl font-black text-emerald-300">{formatMoney(summary?.total ?? 0)}</p></div><div><p className="text-xs text-slate-400">Total pagado</p><p className="mt-1 font-bold">{formatMoney(displayedTotalPaid)}</p></div><div><p className="text-xs text-slate-400">Saldo restante</p><p className="mt-1 font-bold text-emerald-300">{formatMoney(displayedRemaining)}</p></div></div>
           {error ? <p className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-900" role="alert">{error}</p> : null}
           <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button className="rounded-xl border border-slate-300 px-5 py-3 text-sm font-semibold" disabled={saving} onClick={onClose} type="button">Cancelar</button><button className="rounded-xl bg-emerald-700 px-5 py-3 text-sm font-semibold text-white disabled:opacity-60" disabled={saving || !summary || !clientId || (combinedPayment && Boolean(paymentAllocation.error))} type="submit">{saving ? "Registrando..." : "Confirmar venta"}</button></div>
         </form>
