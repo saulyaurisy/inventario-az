@@ -8,6 +8,16 @@ export type PaymentProofType =
   | "external_link"
   | "manual_note";
 
+export interface PaymentProofAttachment {
+  provider: "google_drive";
+  fileId: string;
+  fileName: string;
+  mimeType: "image/jpeg" | "image/png" | "image/webp";
+  size: number;
+  uploadedAt: Timestamp;
+  uploadedBy: string;
+}
+
 export interface SalePaymentProof {
   id: string;
   saleId: string;
@@ -20,6 +30,7 @@ export interface SalePaymentProof {
   operationReference?: string;
   externalUrl?: string;
   notes?: string;
+  attachment?: PaymentProofAttachment;
   createdBy: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;

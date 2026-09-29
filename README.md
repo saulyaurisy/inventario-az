@@ -203,12 +203,14 @@ firebase deploy --only auth,firestore:rules
 
 ## Comprobantes de pago
 
-- `sale_payment_proofs/{saleId}` conserva únicamente metadata y referencias de evidencia de pago. El ID determinístico limita el MVP a un comprobante activo por venta y evita una colección de unicidad adicional.
+- `sale_payment_proofs/{saleId}` conserva metadata, referencias y, opcionalmente, metadata de una imagen privada en Google Drive. Nunca almacena binarios ni base64. El ID determinístico limita el MVP a un comprobante activo por venta y evita una colección de unicidad adicional.
 - El agente registra o corrige el comprobante de una venta propia; `agentId`, `clientId`, `paymentMethod` y `amount` se copian de la venta y se validan nuevamente en Firestore Rules. El formulario no permite introducirlos.
-- El administrador puede verificar o rechazar con un motivo obligatorio. Un comprobante verificado queda inmutable; uno rechazado puede ser corregido por su agente y volver a estado `provided`.
+- El administrador puede verificar o rechazar con un motivo obligatorio. Un comprobante verificado, incluida su imagen, queda inmutable; uno rechazado puede ser corregido por su agente y volver a estado `provided`.
 - Si una venta está anulada, el comprobante existente sigue visible para auditoría, pero no se permite crear, corregir, verificar ni rechazar. La ausencia de comprobante nunca bloquea una venta.
 - La prueba dinámica sobre una venta anulada no se ejecutó por falta de un fixture real; las reglas de Firestore y la interfaz bloquean nuevas acciones sobre comprobantes en ese estado.
-- Las URL externas son opcionales, deben usar HTTPS y se muestran como enlaces explícitos; no se descargan ni se incrustan. No se usa Firebase Storage, archivos binarios, Cloud Functions, Blaze ni facturación.
+- Las imágenes JPG, PNG o WEBP admiten hasta 5 MB. El backend Next.js valida el Firebase ID token, propiedad de la venta y estado del comprobante antes de crear una sesión resumible de Drive. El navegador recibe solo esa URL temporal; al finalizar, el backend localiza el archivo por un `uploadId` privado, valida carpeta, metadata, tamaño y firma binaria, y recién entonces registra `attachment` en Firestore.
+- Drive usa OAuth 2.0 de una cuenta Gmail dedicada con el scope `drive.file`. Los archivos no son públicos: agentes y administradores los visualizan mediante un endpoint autenticado. Los reemplazos suben y confirman primero el archivo nuevo, actualizan Firestore de forma transaccional y después eliminan el anterior.
+- Las URL externas siguen siendo opcionales y deben usar HTTPS. No se usa Firebase Storage, Cloud Functions, Blaze ni facturación; las credenciales de Google OAuth y Firebase Admin son exclusivamente server-side y nunca llevan el prefijo `NEXT_PUBLIC_`.
 
 ## Proveedores y compras
 

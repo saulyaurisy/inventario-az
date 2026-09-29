@@ -2,6 +2,7 @@ export { PaymentProofsContent } from "./components/payment-proofs-content";
 export { SalePaymentProofSection } from "./components/sale-payment-proof-section";
 export type {
   PaymentProofFilters,
+  PaymentProofAttachment,
   PaymentProofInput,
   PaymentProofStatus,
   PaymentProofType,

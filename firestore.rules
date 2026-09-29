@@ -934,6 +934,32 @@ service cloud.firestore {
         && saleItemMatchesProduct(intent.sale.items, data, product);
     }
 
+    function validPaymentProofAttachment(attachment) {
+      return attachment.keys().hasAll([
+          'provider', 'fileId', 'fileName', 'mimeType', 'size',
+          'uploadedAt', 'uploadedBy'
+        ])
+        && attachment.keys().hasOnly([
+          'provider', 'fileId', 'fileName', 'mimeType', 'size',
+          'uploadedAt', 'uploadedBy'
+        ])
+        && attachment.provider == 'google_drive'
+        && attachment.fileId is string
+        && attachment.fileId.size() > 0
+        && attachment.fileId.size() <= 200
+        && attachment.fileName is string
+        && attachment.fileName.size() <= 120
+        && attachment.fileName.matches('^venta_[A-Za-z0-9_-]+_[0-9]+\\.(jpg|png|webp)$')
+        && attachment.mimeType in ['image/jpeg', 'image/png', 'image/webp']
+        && attachment.size is int
+        && attachment.size > 0
+        && attachment.size <= 5 * 1024 * 1024
+        && attachment.uploadedAt is timestamp
+        && attachment.uploadedBy is string
+        && attachment.uploadedBy.size() > 0
+        && attachment.uploadedBy.size() <= 128;
+    }
+
     function validPaymentProofShape(data) {
       return data.keys().hasAll([
           'saleId', 'agentId', 'clientId', 'status', 'type',
@@ -962,6 +988,8 @@ service cloud.firestore {
           || data.notes is string
             && data.notes.size() > 0
             && data.notes.size() <= 500)
+        && (!data.keys().hasAny(['attachment'])
+          || validPaymentProofAttachment(data.attachment))
         && (data.type != 'operation_reference' || data.keys().hasAny(['operationReference']))
         && (data.type != 'external_link' || data.keys().hasAny(['externalUrl']))
         && (data.type != 'manual_note' || data.keys().hasAny(['notes']))
@@ -970,14 +998,14 @@ service cloud.firestore {
             && data.keys().hasOnly([
               'saleId', 'agentId', 'clientId', 'status', 'type',
               'paymentMethod', 'amount', 'operationReference', 'externalUrl',
-              'notes', 'createdBy', 'createdAt', 'updatedAt'
+              'notes', 'attachment', 'createdBy', 'createdAt', 'updatedAt'
             ])
           || data.status == 'verified'
             && data.keys().hasAll(['verifiedBy', 'verifiedAt'])
             && data.keys().hasOnly([
               'saleId', 'agentId', 'clientId', 'status', 'type',
               'paymentMethod', 'amount', 'operationReference', 'externalUrl',
-              'notes', 'createdBy', 'createdAt', 'updatedAt',
+              'notes', 'attachment', 'createdBy', 'createdAt', 'updatedAt',
               'verifiedBy', 'verifiedAt'
             ])
             && data.verifiedBy is string
@@ -987,7 +1015,7 @@ service cloud.firestore {
             && data.keys().hasOnly([
               'saleId', 'agentId', 'clientId', 'status', 'type',
               'paymentMethod', 'amount', 'operationReference', 'externalUrl',
-              'notes', 'createdBy', 'createdAt', 'updatedAt',
+              'notes', 'attachment', 'createdBy', 'createdAt', 'updatedAt',
               'rejectedBy', 'rejectedAt', 'rejectionReason'
             ])
             && data.rejectedBy is string
@@ -1363,6 +1391,7 @@ service cloud.firestore {
 
       allow create: if isAgent()
         && validPaymentProofShape(request.resource.data)
+        && !request.resource.data.keys().hasAny(['attachment'])
         && request.resource.data.status == 'provided'
         && request.resource.data.agentId == request.auth.uid
         && request.resource.data.createdBy == request.auth.uid
@@ -1404,6 +1433,10 @@ service cloud.firestore {
         );
 
       allow delete: if false;
+    }
+
+    match /payment_proof_uploads/{uploadId} {
+      allow read, write: if false;
     }
 
     match /sales/{saleId} {

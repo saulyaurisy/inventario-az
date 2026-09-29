@@ -18,6 +18,7 @@ import type { PaymentMethod, Sale } from "@/features/sales";
 import { getFirebaseDb } from "@/lib/firebase";
 
 import type {
+  PaymentProofAttachment,
   PaymentProofInput,
   PaymentProofStatus,
   PaymentProofType,
@@ -34,15 +35,41 @@ const PAYMENT_METHODS: PaymentMethod[] = ["cash", "yape", "plin", "bank_transfer
 const PROOF_STATUSES: PaymentProofStatus[] = ["provided", "verified", "rejected"];
 const PROOF_TYPES: PaymentProofType[] = ["operation_reference", "external_link", "manual_note"];
 
+function parseAttachment(value: unknown): PaymentProofAttachment | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const data = value as Record<string, unknown>;
+  if (
+    data.provider !== "google_drive" ||
+    typeof data.fileId !== "string" ||
+    typeof data.fileName !== "string" ||
+    !["image/jpeg", "image/png", "image/webp"].includes(String(data.mimeType)) ||
+    !Number.isInteger(data.size) || Number(data.size) <= 0 ||
+    !(data.uploadedAt instanceof Timestamp) ||
+    typeof data.uploadedBy !== "string"
+  ) return undefined;
+  return {
+    provider: "google_drive",
+    fileId: data.fileId,
+    fileName: data.fileName,
+    mimeType: data.mimeType as PaymentProofAttachment["mimeType"],
+    size: Number(data.size),
+    uploadedAt: data.uploadedAt,
+    uploadedBy: data.uploadedBy,
+  };
+}
+
 function parseProof(snapshot: DocumentSnapshot): SalePaymentProof {
   const data = snapshot.data();
   if (!data || typeof data.saleId !== "string" || typeof data.agentId !== "string" || typeof data.clientId !== "string" || !PROOF_STATUSES.includes(data.status) || !PROOF_TYPES.includes(data.type) || !PAYMENT_METHODS.includes(data.paymentMethod) || !Number.isInteger(data.amount) || typeof data.createdBy !== "string" || !(data.createdAt instanceof Timestamp) || !(data.updatedAt instanceof Timestamp)) throw new Error("Invalid payment proof data");
+  const attachment = parseAttachment(data.attachment);
+  if (data.attachment !== undefined && !attachment) throw new Error("Invalid payment proof attachment");
   return {
     id: snapshot.id, saleId: data.saleId, agentId: data.agentId, clientId: data.clientId,
     status: data.status, type: data.type, paymentMethod: data.paymentMethod, amount: data.amount,
     ...(typeof data.operationReference === "string" ? { operationReference: data.operationReference } : {}),
     ...(typeof data.externalUrl === "string" ? { externalUrl: data.externalUrl } : {}),
     ...(typeof data.notes === "string" ? { notes: data.notes } : {}),
+    ...(attachment ? { attachment } : {}),
     createdBy: data.createdBy, createdAt: data.createdAt, updatedAt: data.updatedAt,
     ...(typeof data.verifiedBy === "string" ? { verifiedBy: data.verifiedBy } : {}),
     ...(data.verifiedAt instanceof Timestamp ? { verifiedAt: data.verifiedAt } : {}),
