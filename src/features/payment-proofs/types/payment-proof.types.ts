@@ -7,6 +7,7 @@ export type PaymentProofType =
   | "operation_reference"
   | "external_link"
   | "manual_note";
+export type EditablePaymentProofType = Exclude<PaymentProofType, "external_link">;
 
 export interface PaymentProofAttachment {
   provider: "google_drive";
@@ -42,9 +43,8 @@ export interface SalePaymentProof {
 }
 
 export interface PaymentProofInput {
-  type: PaymentProofType;
+  type: EditablePaymentProofType;
   operationReference?: string;
-  externalUrl?: string;
   notes?: string;
 }
 

@@ -1392,6 +1392,8 @@ service cloud.firestore {
       allow create: if isAgent()
         && validPaymentProofShape(request.resource.data)
         && !request.resource.data.keys().hasAny(['attachment'])
+        && !request.resource.data.keys().hasAny(['externalUrl'])
+        && request.resource.data.type in ['operation_reference', 'manual_note']
         && request.resource.data.status == 'provided'
         && request.resource.data.agentId == request.auth.uid
         && request.resource.data.createdBy == request.auth.uid
@@ -1407,6 +1409,8 @@ service cloud.firestore {
             && resource.data.agentId == request.auth.uid
             && resource.data.status in ['provided', 'rejected']
             && request.resource.data.status == 'provided'
+            && !request.resource.data.keys().hasAny(['externalUrl'])
+            && request.resource.data.type in ['operation_reference', 'manual_note']
             && request.resource.data.updatedAt == request.time
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
               'status', 'type', 'operationReference', 'externalUrl', 'notes',

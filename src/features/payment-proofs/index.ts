@@ -3,6 +3,7 @@ export { SalePaymentProofSection } from "./components/sale-payment-proof-section
 export type {
   PaymentProofFilters,
   PaymentProofAttachment,
+  EditablePaymentProofType,
   PaymentProofInput,
   PaymentProofStatus,
   PaymentProofType,
@@ -11,5 +12,5 @@ export type {
 export {
   PAYMENT_PROOF_STATUS_LABELS,
   PAYMENT_PROOF_TYPE_LABELS,
-  isSafeExternalUrl,
+  EDITABLE_PAYMENT_PROOF_TYPE_LABELS,
 } from "./utils/payment-proof-utils";

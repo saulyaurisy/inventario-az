@@ -105,9 +105,9 @@ export async function createOrUpdateProof(saleId: string, rawInput: PaymentProof
     if (!saleDocument.exists()) throw new PaymentProofSaleError();
     const sale = saleSnapshot(saleDocument.data(), saleDocument.id);
     if (sale.status !== "completed" || sale.agentId !== actorUid) throw new PaymentProofSaleError();
-    const editable = { type: input.type, operationReference: input.operationReference ?? deleteField(), externalUrl: input.externalUrl ?? deleteField(), notes: input.notes ?? deleteField(), updatedAt: serverTimestamp() };
+    const editable = { type: input.type, operationReference: input.operationReference ?? deleteField(), externalUrl: deleteField(), notes: input.notes ?? deleteField(), updatedAt: serverTimestamp() };
     if (!proofDocument.exists()) {
-      transaction.set(proofRef, { saleId, agentId: sale.agentId, clientId: sale.clientId, status: "provided", type: input.type, paymentMethod: sale.paymentMethod, amount: sale.total, ...(input.operationReference ? { operationReference: input.operationReference } : {}), ...(input.externalUrl ? { externalUrl: input.externalUrl } : {}), ...(input.notes ? { notes: input.notes } : {}), createdBy: actorUid, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+      transaction.set(proofRef, { saleId, agentId: sale.agentId, clientId: sale.clientId, status: "provided", type: input.type, paymentMethod: sale.paymentMethod, amount: sale.total, ...(input.operationReference ? { operationReference: input.operationReference } : {}), ...(input.notes ? { notes: input.notes } : {}), createdBy: actorUid, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
       return;
     }
     const proof = parseProof(proofDocument);
@@ -140,7 +140,7 @@ async function reviewProof(saleId: string, actorUid: string, status: "verified" 
 }
 
 export function getPaymentProofErrorMessage(error: unknown): string {
-  if (error instanceof PaymentProofValidationError) return "Revisa el tipo, la referencia, la URL segura y las notas del comprobante.";
+  if (error instanceof PaymentProofValidationError) return "Revisa el tipo, la referencia y las notas del comprobante.";
   if (error instanceof PaymentProofNotFoundError) return "El comprobante ya no existe.";
   if (error instanceof PaymentProofTransitionError) return "El comprobante cambió de estado o ya no admite esta acción.";
   if (error instanceof PaymentProofSaleError) return "La venta no existe, está anulada o no te pertenece.";

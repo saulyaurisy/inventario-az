@@ -7,14 +7,11 @@ import {
   validatePaymentProofFile,
 } from "../services/payment-proof-attachment.service";
 import type {
+  EditablePaymentProofType,
   PaymentProofInput,
-  PaymentProofType,
   SalePaymentProof,
 } from "../types/payment-proof.types";
-import {
-  isSafeExternalUrl,
-  PAYMENT_PROOF_TYPE_LABELS,
-} from "../utils/payment-proof-utils";
+import { EDITABLE_PAYMENT_PROOF_TYPE_LABELS } from "../utils/payment-proof-utils";
 
 interface PaymentProofFormDialogProps {
   initial: SalePaymentProof | null;
@@ -31,9 +28,9 @@ function formatFileSize(size: number): string {
 }
 
 export function PaymentProofFormDialog({ initial, onClose, onSubmit }: PaymentProofFormDialogProps) {
-  const [type, setType] = useState<PaymentProofType>(initial?.type ?? "operation_reference");
+  const initialType: EditablePaymentProofType = initial?.type === "manual_note" ? "manual_note" : "operation_reference";
+  const [type, setType] = useState<EditablePaymentProofType>(initialType);
   const [operationReference, setOperationReference] = useState(initial?.operationReference ?? "");
-  const [externalUrl, setExternalUrl] = useState(initial?.externalUrl ?? "");
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -69,10 +66,6 @@ export function PaymentProofFormDialog({ initial, onClose, onSubmit }: PaymentPr
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
-    if (externalUrl && !isSafeExternalUrl(externalUrl.trim())) {
-      setError("La URL debe usar HTTPS y no incluir credenciales.");
-      return;
-    }
     if (file) {
       const validationError = validatePaymentProofFile(file);
       if (validationError) {
@@ -86,7 +79,6 @@ export function PaymentProofFormDialog({ initial, onClose, onSubmit }: PaymentPr
       await onSubmit({
         type,
         ...(operationReference.trim() ? { operationReference } : {}),
-        ...(externalUrl.trim() ? { externalUrl } : {}),
         ...(notes.trim() ? { notes } : {}),
       }, file, setProgress);
     } catch (cause) {
@@ -103,9 +95,8 @@ export function PaymentProofFormDialog({ initial, onClose, onSubmit }: PaymentPr
         <button aria-label="Cerrar" className="size-10 rounded-xl border text-2xl" disabled={saving} onClick={onClose} type="button">×</button>
       </div>
       <form className="space-y-5 p-5 sm:p-7" onSubmit={submit}>
-        <div><label className="text-sm font-semibold" htmlFor="proof-type">Tipo</label><select className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm" id="proof-type" onChange={(event) => setType(event.target.value as PaymentProofType)} value={type}>{Object.entries(PAYMENT_PROOF_TYPE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
+        <div><label className="text-sm font-semibold" htmlFor="proof-type">Tipo</label><select className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm" id="proof-type" onChange={(event) => setType(event.target.value as EditablePaymentProofType)} value={type}>{Object.entries(EDITABLE_PAYMENT_PROOF_TYPE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
         <div><label className="text-sm font-semibold" htmlFor="proof-reference">Referencia de operación</label><input className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3 text-sm" id="proof-reference" maxLength={100} onChange={(event) => setOperationReference(event.target.value)} required={type === "operation_reference"} value={operationReference} /></div>
-        <div><label className="text-sm font-semibold" htmlFor="proof-url">URL externa HTTPS</label><input className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3 text-sm" id="proof-url" maxLength={500} onChange={(event) => setExternalUrl(event.target.value)} placeholder="https://..." required={type === "external_link"} type="url" value={externalUrl} /><p className="mt-1 text-xs text-slate-500">Solo se guarda la referencia. El sistema no descarga ni incrusta su contenido.</p></div>
         <div><label className="text-sm font-semibold" htmlFor="proof-notes">Notas</label><textarea className="mt-2 min-h-28 w-full rounded-xl border border-slate-300 px-3 py-3 text-sm" id="proof-notes" maxLength={500} onChange={(event) => setNotes(event.target.value)} required={type === "manual_note"} value={notes} /></div>
 
         <div className="rounded-2xl border border-slate-200 p-4">

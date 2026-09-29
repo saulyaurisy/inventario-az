@@ -210,7 +210,7 @@ firebase deploy --only auth,firestore:rules
 - La prueba dinámica sobre una venta anulada no se ejecutó por falta de un fixture real; las reglas de Firestore y la interfaz bloquean nuevas acciones sobre comprobantes en ese estado.
 - Las imágenes JPG, PNG o WEBP admiten hasta 5 MB. El backend Next.js valida el Firebase ID token, propiedad de la venta y estado del comprobante antes de crear una sesión resumible de Drive. El navegador recibe solo esa URL temporal; al finalizar, el backend localiza el archivo por un `uploadId` privado, valida carpeta, metadata, tamaño y firma binaria, y recién entonces registra `attachment` en Firestore.
 - Drive usa OAuth 2.0 de una cuenta Gmail dedicada con el scope `drive.file`. Los archivos no son públicos: agentes y administradores los visualizan mediante un endpoint autenticado. Los reemplazos suben y confirman primero el archivo nuevo, actualizan Firestore de forma transaccional y después eliminan el anterior.
-- Las URL externas siguen siendo opcionales y deben usar HTTPS. No se usa Firebase Storage, Cloud Functions, Blaze ni facturación; las credenciales de Google OAuth y Firebase Admin son exclusivamente server-side y nunca llevan el prefijo `NEXT_PUBLIC_`.
+- El formulario usa referencia de operación, notas y una foto privada; ya no admite nuevas URL externas. Los campos `externalUrl` y el tipo `external_link` se conservan únicamente para leer comprobantes históricos sin romper compatibilidad. No se usa Firebase Storage, Cloud Functions, Blaze ni facturación; las credenciales de Google OAuth y Firebase Admin son exclusivamente server-side y nunca llevan el prefijo `NEXT_PUBLIC_`.
 
 ## Proveedores y compras
 
