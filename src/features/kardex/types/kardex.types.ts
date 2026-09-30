@@ -54,6 +54,7 @@ export interface KardexRow {
   createdByLabel: string;
   direction: KardexMovementDirection;
   typeLabel: string;
+  referenceLabel: string;
 }
 
 export interface KardexSummary {

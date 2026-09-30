@@ -23,10 +23,13 @@ function DetailItem({ label, value }: { label: string; value: React.ReactNode })
 
 export function KardexDetailDialog({ onClose, row }: KardexDetailDialogProps) {
   const { movement } = row;
-  const reference =
-    movement.referenceType || movement.referenceId
-      ? [movement.referenceType, movement.referenceId].filter(Boolean).join(" / ")
-      : "Sin referencia";
+  const signedQuantity = `${row.direction === "out" ? "−" : row.direction === "in" ? "+" : ""}${movement.quantity}`;
+  const quantityTone =
+    row.direction === "out"
+      ? "text-amber-700"
+      : row.direction === "in"
+        ? "text-emerald-700"
+        : "text-slate-700";
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/60 p-0 backdrop-blur-sm sm:items-center sm:p-6">
@@ -67,14 +70,17 @@ export function KardexDetailDialog({ onClose, row }: KardexDetailDialogProps) {
           </div>
 
           <dl className="grid gap-5 sm:grid-cols-2">
-            <DetailItem label="Fecha" value={formatKardexDate(movement.createdAt.toDate())} />
+            <DetailItem label="Fecha y hora" value={formatKardexDate(movement.createdAt.toDate())} />
+            <DetailItem label="Producto" value={row.productName} />
+            <DetailItem label="SKU" value={<span className="font-mono">{row.sku}</span>} />
             <DetailItem label="Propietario" value={row.ownerLabel} />
-            <DetailItem label="Tipo" value={row.typeLabel} />
-            <DetailItem label="Cantidad" value={movement.quantity} />
+            <DetailItem label="Movimiento" value={row.typeLabel} />
+            <DetailItem label="Cantidad" value={<span className={quantityTone}>{signedQuantity}</span>} />
             <DetailItem label="Stock anterior" value={movement.quantityBefore} />
             <DetailItem label="Stock posterior" value={movement.quantityAfter} />
-            <DetailItem label="Creado por" value={row.createdByLabel} />
-            <DetailItem label="Referencia" value={reference} />
+            <DetailItem label="Usuario" value={row.createdByLabel} />
+            <DetailItem label="Referencia relacionada" value={row.referenceLabel} />
+            <DetailItem label="ID exacto de referencia" value={movement.referenceId ?? "Sin referencia"} />
             <div className="sm:col-span-2">
               <DetailItem label="Motivo" value={movement.reason} />
             </div>

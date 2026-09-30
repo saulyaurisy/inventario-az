@@ -23,6 +23,7 @@ import {
   formatKardexDate,
   getKardexMovementDirection,
   getKardexMovementLabel,
+  getKardexReferenceLabel,
   getLocalDateKey,
   matchesKardexCategory,
 } from "../utils/kardex-utils";
@@ -58,8 +59,14 @@ function SummaryCard({ label, tone, value }: { label: string; tone: string; valu
 }
 
 function MovementAmount({ row }: { row: KardexRow }) {
+  const tone =
+    row.direction === "out"
+      ? "text-amber-700"
+      : row.direction === "in"
+        ? "text-emerald-700"
+        : "text-slate-700";
   return (
-    <span className={row.direction === "out" ? "font-bold text-amber-700" : "font-bold text-emerald-700"}>
+    <span className={`font-bold tabular-nums ${tone}`}>
       {row.direction === "out" ? "−" : row.direction === "in" ? "+" : ""}
       {row.movement.quantity}
     </span>
@@ -149,6 +156,7 @@ export function KardexContent() {
             userLabels.get(movement.createdBy) ?? "Usuario del sistema",
           direction: getKardexMovementDirection(movement),
           typeLabel: getKardexMovementLabel(movement.type),
+          referenceLabel: getKardexReferenceLabel(movement),
         };
       }),
     [movements, productMap, profile, user, userLabels],
@@ -228,20 +236,13 @@ export function KardexContent() {
           <div className="grid gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-2 xl:grid-cols-3">
             <div>
               <label className="text-sm font-semibold text-slate-800" htmlFor="kardex-search">Buscar</label>
-              <input className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100" id="kardex-search" onChange={(event) => setFilter("search", event.target.value)} placeholder="SKU, producto, motivo o propietario" type="search" value={filters.search} />
+              <input className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100" id="kardex-search" onChange={(event) => setFilter("search", event.target.value)} placeholder={isAdmin ? "SKU, producto, motivo o propietario" : "SKU, producto o motivo"} type="search" value={filters.search} />
             </div>
             <div>
               <label className="text-sm font-semibold text-slate-800" htmlFor="kardex-product">Producto</label>
               <select className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100" id="kardex-product" onChange={(event) => setFilter("productId", event.target.value)} value={filters.productId}>
                 <option value="all">Todos los productos</option>
                 {products.map((product) => <option key={product.id} value={product.id}>{product.sku} · {product.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-sm font-semibold text-slate-800" htmlFor="kardex-owner">Propietario</label>
-              <select className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100 disabled:bg-slate-100" disabled={!isAdmin} id="kardex-owner" onChange={(event) => setFilter("ownerKey", event.target.value)} value={isAdmin ? filters.ownerKey : ownerOptions[0]?.key ?? "all"}>
-                {isAdmin ? <option value="all">Todos los propietarios</option> : null}
-                {ownerOptions.map((owner) => <option key={owner.key} value={owner.key}>{owner.label}</option>)}
               </select>
             </div>
             <div>
@@ -253,6 +254,15 @@ export function KardexContent() {
                 <option value="out">Salidas</option>
               </select>
             </div>
+            {isAdmin ? (
+              <div>
+                <label className="text-sm font-semibold text-slate-800" htmlFor="kardex-owner">Propietario</label>
+                <select className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100" id="kardex-owner" onChange={(event) => setFilter("ownerKey", event.target.value)} value={filters.ownerKey}>
+                  <option value="all">Todos los propietarios</option>
+                  {ownerOptions.map((owner) => <option key={owner.key} value={owner.key}>{owner.label}</option>)}
+                </select>
+              </div>
+            ) : null}
             <div>
               <label className="text-sm font-semibold text-slate-800" htmlFor="kardex-from">Desde</label>
               <input className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100" id="kardex-from" onChange={(event) => setFilter("dateFrom", event.target.value)} type="date" value={filters.dateFrom} />
@@ -266,10 +276,10 @@ export function KardexContent() {
           {dateRangeInvalid ? <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800" role="alert">La fecha Desde no puede ser posterior a la fecha Hasta.</p> : null}
 
           <div aria-label="Resumen del Kardex" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <SummaryCard label="Movimientos" tone="text-slate-950" value={summary.movements} />
-            <SummaryCard label="Entradas" tone="text-emerald-700" value={summary.entries} />
-            <SummaryCard label="Salidas" tone="text-amber-700" value={summary.exits} />
-            <SummaryCard label="Neto del filtro" tone={summary.net < 0 ? "text-red-700" : "text-emerald-700"} value={`${summary.net >= 0 ? "+" : ""}${summary.net}`} />
+            <SummaryCard label="Total de movimientos" tone="text-slate-950" value={summary.movements} />
+            <SummaryCard label="Unidades ingresadas" tone="text-emerald-700" value={summary.entries} />
+            <SummaryCard label="Unidades salidas" tone="text-amber-700" value={summary.exits} />
+            <SummaryCard label="Balance neto" tone={summary.net < 0 ? "text-red-700" : "text-emerald-700"} value={`${summary.net >= 0 ? "+" : ""}${summary.net}`} />
           </div>
 
           {loading ? (
@@ -281,14 +291,14 @@ export function KardexContent() {
           ) : (
             <>
               <p className="text-sm text-slate-500">{filteredRows.length} {filteredRows.length === 1 ? "movimiento" : "movimientos"}, ordenados del más reciente al más antiguo.</p>
-              <div className="hidden overflow-x-auto rounded-2xl border border-slate-200 xl:block">
-                <table className="min-w-[1180px] divide-y divide-slate-200 text-left text-sm">
-                  <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-3 py-3 font-semibold">Fecha</th><th className="px-3 py-3 font-semibold">Producto</th><th className="px-3 py-3 font-semibold">Propietario</th><th className="px-3 py-3 font-semibold">Tipo</th><th className="px-3 py-3 font-semibold">Entrada</th><th className="px-3 py-3 font-semibold">Salida</th><th className="px-3 py-3 font-semibold">Anterior</th><th className="px-3 py-3 font-semibold">Posterior</th><th className="px-3 py-3 font-semibold">Motivo</th><th className="px-3 py-3 font-semibold">Usuario</th><th className="px-3 py-3 font-semibold">Detalle</th></tr></thead>
-                  <tbody className="divide-y divide-slate-100">{filteredRows.map((row) => <tr key={row.movement.id}><td className="whitespace-nowrap px-3 py-4 text-xs text-slate-600">{formatKardexDate(row.movement.createdAt.toDate())}</td><td className="px-3 py-4"><p className="font-semibold text-slate-950">{row.productName}</p><p className="mt-1 font-mono text-xs text-slate-500">{row.sku}</p></td><td className="px-3 py-4 text-slate-700">{row.ownerLabel}</td><td className="px-3 py-4 font-medium text-slate-800">{row.typeLabel}</td><td className="px-3 py-4 font-bold text-emerald-700">{row.direction === "in" ? row.movement.quantity : "—"}</td><td className="px-3 py-4 font-bold text-amber-700">{row.direction === "out" ? row.movement.quantity : "—"}</td><td className="px-3 py-4 text-slate-700">{row.movement.quantityBefore}</td><td className="px-3 py-4 font-bold text-slate-950">{row.movement.quantityAfter}</td><td className="max-w-52 px-3 py-4 text-slate-700"><span className="line-clamp-2">{row.movement.reason}</span></td><td className="px-3 py-4 text-slate-700">{row.createdByLabel}</td><td className="px-3 py-4"><button className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600" onClick={() => setSelectedRow(row)} type="button">Ver detalle</button></td></tr>)}</tbody>
+              <div className="hidden overflow-hidden rounded-2xl border border-slate-200 lg:block">
+                <table className="w-full table-fixed divide-y divide-slate-200 text-left text-sm">
+                  <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="w-[14%] px-3 py-3 font-semibold">Fecha</th><th className="w-[20%] px-3 py-3 font-semibold">Producto</th><th className="w-[16%] px-3 py-3 font-semibold">Movimiento</th><th className="w-[10%] px-3 py-3 font-semibold">Cantidad</th><th className="w-[11%] px-3 py-3 font-semibold">Stock final</th><th className="w-[17%] px-3 py-3 font-semibold">Referencia</th><th className="w-[12%] px-3 py-3 font-semibold">Acción</th></tr></thead>
+                  <tbody className="divide-y divide-slate-100">{filteredRows.map((row) => <tr className="align-middle" key={row.movement.id}><td className="whitespace-nowrap px-3 py-4 text-xs text-slate-600">{formatKardexDate(row.movement.createdAt.toDate())}</td><td className="px-3 py-4"><p className="truncate font-semibold text-slate-950" title={row.productName}>{row.productName}</p><p className="mt-1 truncate font-mono text-xs text-slate-500" title={row.sku}>{row.sku}</p></td><td className="px-3 py-4 font-medium text-slate-800">{row.typeLabel}</td><td className="px-3 py-4"><MovementAmount row={row} /></td><td className="px-3 py-4 font-bold tabular-nums text-slate-950">{row.movement.quantityAfter}</td><td className="px-3 py-4 text-slate-700">{row.referenceLabel}</td><td className="px-3 py-4"><button className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600" onClick={() => setSelectedRow(row)} type="button">Ver detalle</button></td></tr>)}</tbody>
                 </table>
               </div>
 
-              <div className="grid gap-4 xl:hidden">{filteredRows.map((row) => <article className="rounded-2xl border border-slate-200 p-4 shadow-sm" key={row.movement.id}><div className="flex items-start justify-between gap-3"><div><p className="text-xs text-slate-500">{formatKardexDate(row.movement.createdAt.toDate())}</p><h3 className="mt-1 font-bold text-slate-950">{row.productName}</h3><p className="mt-1 font-mono text-xs text-slate-500">{row.sku}</p></div><MovementAmount row={row} /></div><dl className="mt-4 grid grid-cols-2 gap-3 text-sm"><div><dt className="text-xs text-slate-500">Propietario</dt><dd className="mt-1 font-medium text-slate-900">{row.ownerLabel}</dd></div><div><dt className="text-xs text-slate-500">Tipo</dt><dd className="mt-1 font-medium text-slate-900">{row.typeLabel}</dd></div><div><dt className="text-xs text-slate-500">Stock anterior</dt><dd className="mt-1 font-semibold text-slate-900">{row.movement.quantityBefore}</dd></div><div><dt className="text-xs text-slate-500">Stock posterior</dt><dd className="mt-1 font-semibold text-slate-900">{row.movement.quantityAfter}</dd></div></dl><p className="mt-3 break-words text-sm text-slate-700"><span className="font-semibold">Motivo:</span> {row.movement.reason}</p><div className="mt-4 flex items-center justify-between gap-3 border-t border-slate-100 pt-4"><p className="text-xs text-slate-500">{row.createdByLabel}</p><button className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600" onClick={() => setSelectedRow(row)} type="button">Ver detalle</button></div></article>)}</div>
+              <div className="grid gap-4 lg:hidden">{filteredRows.map((row) => <article className="min-w-0 rounded-2xl border border-slate-200 p-4 shadow-sm" key={row.movement.id}><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-xs text-slate-500">{formatKardexDate(row.movement.createdAt.toDate())}</p><h3 className="mt-1 truncate font-bold text-slate-950">{row.productName}</h3><p className="mt-1 truncate font-mono text-xs text-slate-500">{row.sku}</p></div><MovementAmount row={row} /></div><dl className="mt-4 grid grid-cols-2 gap-3 text-sm"><div><dt className="text-xs text-slate-500">Movimiento</dt><dd className="mt-1 font-medium text-slate-900">{row.typeLabel}</dd></div><div><dt className="text-xs text-slate-500">Stock final</dt><dd className="mt-1 font-semibold tabular-nums text-slate-900">{row.movement.quantityAfter}</dd></div><div className="col-span-2"><dt className="text-xs text-slate-500">Referencia</dt><dd className="mt-1 break-words font-medium text-slate-900">{row.referenceLabel}</dd></div></dl><div className="mt-4 flex justify-end border-t border-slate-100 pt-4"><button className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600" onClick={() => setSelectedRow(row)} type="button">Ver detalle</button></div></article>)}</div>
             </>
           )}
         </div>

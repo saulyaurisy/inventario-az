@@ -22,14 +22,20 @@ const OUTBOUND_TYPES = new Set([
 
 const MOVEMENT_LABELS: Record<string, string> = {
   initial: "Stock inicial",
-  adjustment_in: "Entrada por ajuste",
-  adjustment_out: "Salida por ajuste",
+  adjustment_in: "Ajuste de entrada",
+  adjustment_out: "Ajuste de salida",
   sale: "Venta",
-  replenishment_in: "Entrada por reposición",
-  replenishment_out: "Salida por reposición",
+  replenishment_in: "Reposición recibida",
+  replenishment_out: "Reposición enviada",
   return: "Devolución",
   purchase: "Compra",
-  purchase_in: "Entrada por compra",
+  purchase_in: "Compra recibida",
+};
+
+const REFERENCE_LABELS: Record<string, string> = {
+  sale: "Venta",
+  replenishment: "Reposición",
+  purchase: "Compra",
 };
 
 export function getKardexMovementDirection(
@@ -49,6 +55,31 @@ export function getKardexMovementLabel(type: string): string {
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
   return MOVEMENT_LABELS[type] ?? (fallback || "Movimiento");
+}
+
+function extractBusinessNumber(movement: KardexMovement): string | null {
+  const patterns: Record<string, RegExp> = {
+    sale: /\bV-(\d+)\b/i,
+    replenishment: /\bREP-(\d+)\b/i,
+    purchase: /\bC-(\d+)\b/i,
+  };
+  const match = patterns[movement.referenceType ?? ""]?.exec(movement.reason);
+  return match?.[1] ?? null;
+}
+
+export function getKardexReferenceLabel(movement: KardexMovement): string {
+  if (!movement.referenceType && !movement.referenceId) return "Sin referencia";
+
+  const label = REFERENCE_LABELS[movement.referenceType ?? ""] ?? "Referencia";
+  const businessNumber = extractBusinessNumber(movement);
+  if (businessNumber) return `${label} #${businessNumber}`;
+
+  if (movement.referenceType === "replenishment") {
+    const requestNumber = /\b(SOL-[A-Za-z0-9]+)\b/.exec(movement.reason)?.[1];
+    if (requestNumber) return "Solicitud de reposición";
+  }
+
+  return label;
 }
 
 export function matchesKardexCategory(
