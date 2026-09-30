@@ -4,6 +4,7 @@ import { toCents } from "@/features/sales";
 import type { PurchaseDraftItem, PurchaseItem, PurchaseStatus } from "../types/purchase.types";
 
 export const MAX_PURCHASE_ITEMS = 3;
+export const MAX_RECEIVABLE_PURCHASE_ITEMS = 1;
 export const PURCHASE_STATUS_LABELS: Record<PurchaseStatus, string> = { draft: "Borrador", received: "Recibida", cancelled: "Cancelada" };
 
 export function calculatePurchase(items: PurchaseDraftItem[], products: Map<string, Product>): { items: PurchaseItem[]; subtotal: number; total: number } {
