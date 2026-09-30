@@ -12,6 +12,7 @@ import {
   listInventory,
   listInventoryAgents,
   listInventoryMovements,
+  listInventoryOverviewMovements,
   setInitialStock,
 } from "../services/inventory.service";
 import type {
@@ -21,6 +22,7 @@ import type {
   InventoryViewRow,
 } from "../types/inventory.types";
 import {
+  calculateInventoryMovementSummary,
   getInventoryId,
   getStockStatus,
   STOCK_STATUS_LABELS,
@@ -49,7 +51,11 @@ interface RowActionsProps {
 }
 
 function RowActions({ isAdmin, onAdjust, onHistory, onInitial, row }: RowActionsProps) {
-  if (!isAdmin) return <span className="text-xs text-slate-500">Solo consulta</span>;
+  if (!isAdmin) {
+    return row.inventory ? (
+      <button className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600" onClick={onHistory} type="button">Ver movimientos</button>
+    ) : <span className="text-xs text-slate-500">Sin movimientos</span>;
+  }
   if (!row.inventory) {
     return row.product.active ? (
       <button className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600" onClick={onInitial} type="button">Registrar stock inicial</button>
@@ -70,6 +76,7 @@ export function InventoryContent() {
   const [products, setProducts] = useState<Product[]>([]);
   const [records, setRecords] = useState<Awaited<ReturnType<typeof listInventory>>>([]);
   const [agents, setAgents] = useState<InventoryAgent[]>([]);
+  const [overviewMovements, setOverviewMovements] = useState<InventoryMovement[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
@@ -88,14 +95,16 @@ export function InventoryContent() {
     setLoading(true);
     setLoadError(null);
     try {
-      const [nextProducts, nextRecords, nextAgents] = await Promise.all([
+      const [nextProducts, nextRecords, nextAgents, nextMovements] = await Promise.all([
         listProducts(),
         listInventory(profile.role, user.uid),
         profile.role === "admin" ? listInventoryAgents() : Promise.resolve([]),
+        listInventoryOverviewMovements(profile.role, user.uid),
       ]);
       setProducts(nextProducts);
       setRecords(nextRecords);
       setAgents(nextAgents);
+      setOverviewMovements(nextMovements);
     } catch (error) {
       setLoadError(getInventoryErrorMessage(error));
     } finally {
@@ -110,12 +119,14 @@ export function InventoryContent() {
       listProducts(),
       listInventory(profile.role, user.uid),
       profile.role === "admin" ? listInventoryAgents() : Promise.resolve([]),
+      listInventoryOverviewMovements(profile.role, user.uid),
     ])
-      .then(([nextProducts, nextRecords, nextAgents]) => {
+      .then(([nextProducts, nextRecords, nextAgents, nextMovements]) => {
         if (!ignore) {
           setProducts(nextProducts);
           setRecords(nextRecords);
           setAgents(nextAgents);
+          setOverviewMovements(nextMovements);
         }
       })
       .catch((error: unknown) => {
@@ -140,6 +151,12 @@ export function InventoryContent() {
         ]
       : [{ ownerType: "agent" as const, ownerId: user.uid, ownerLabel: profile.displayName }];
     const rowMap = new Map<string, InventoryViewRow>();
+    const movementMap = new Map<string, InventoryMovement[]>();
+    for (const movement of overviewMovements) {
+      const inventoryMovements = movementMap.get(movement.inventoryId) ?? [];
+      inventoryMovements.push(movement);
+      movementMap.set(movement.inventoryId, inventoryMovements);
+    }
 
     for (const product of products) {
       for (const owner of owners) {
@@ -150,6 +167,10 @@ export function InventoryContent() {
           ...owner,
           product,
           status: "uninitialized",
+          movementSummary: calculateInventoryMovementSummary(
+            movementMap.get(id) ?? [],
+            null,
+          ),
         });
       }
     }
@@ -169,6 +190,10 @@ export function InventoryContent() {
         ownerType: inventory.ownerType,
         product,
         status: getStockStatus(inventory.quantity, product.minimumStock),
+        movementSummary: calculateInventoryMovementSummary(
+          movementMap.get(inventory.id) ?? [],
+          inventory.quantity,
+        ),
       });
     }
 
@@ -176,7 +201,7 @@ export function InventoryContent() {
       a.product.name.localeCompare(b.product.name, "es") ||
       a.ownerLabel.localeCompare(b.ownerLabel, "es"),
     );
-  }, [agents, isAdmin, products, profile, records, user]);
+  }, [agents, isAdmin, overviewMovements, products, profile, records, user]);
 
   const filteredRows = useMemo(() => {
     const term = search.trim().toLocaleLowerCase("es");
@@ -264,11 +289,11 @@ export function InventoryContent() {
             <>
               <p className="text-sm text-slate-500">{filteredRows.length} {filteredRows.length === 1 ? "registro" : "registros"}</p>
               <div className="hidden overflow-x-auto rounded-2xl border border-slate-200 lg:block">
-                <table className="min-w-full divide-y divide-slate-200 text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-3 font-semibold">Producto</th><th className="px-4 py-3 font-semibold">Propietario</th><th className="px-4 py-3 font-semibold">Stock actual</th><th className="px-4 py-3 font-semibold">Stock mínimo</th><th className="px-4 py-3 font-semibold">Estado</th><th className="px-4 py-3 font-semibold">Actualizado</th><th className="px-4 py-3 font-semibold">Acciones</th></tr></thead><tbody className="divide-y divide-slate-100">
-                  {filteredRows.map((row) => <tr key={row.id}><td className="px-4 py-4"><p className="font-semibold text-slate-950">{row.product.name}</p><p className="mt-1 font-mono text-xs text-slate-500">{row.product.sku}{row.product.active ? "" : " · Inactivo"}</p></td><td className="px-4 py-4 text-slate-700">{row.ownerLabel}</td><td className="px-4 py-4 text-lg font-bold text-slate-950">{row.inventory?.quantity ?? "—"}</td><td className="px-4 py-4 text-slate-700">{row.product.minimumStock}</td><td className="px-4 py-4"><StockBadge status={row.status} /></td><td className="px-4 py-4 text-xs text-slate-500">{row.inventory ? new Intl.DateTimeFormat("es-PE", { dateStyle: "short", timeStyle: "short" }).format(row.inventory.updatedAt.toDate()) : "—"}</td><td className="px-4 py-4"><RowActions isAdmin={isAdmin} onAdjust={() => setOperation({ mode: "adjust", row })} onHistory={() => void openHistory(row)} onInitial={() => setOperation({ mode: "initial", row })} row={row} /></td></tr>)}
+                <table className="min-w-[1420px] divide-y divide-slate-200 text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-3 py-3 font-semibold">Producto</th><th className="px-3 py-3 font-semibold">Propietario</th><th className="px-3 py-3 font-semibold">Stock inicial</th><th className="px-3 py-3 font-semibold">Entradas</th><th className="px-3 py-3 font-semibold">Vendido</th><th className="px-3 py-3 font-semibold">Otras salidas</th><th className="px-3 py-3 font-semibold">Stock actual</th><th className="px-3 py-3 font-semibold">Stock mínimo</th><th className="px-3 py-3 font-semibold">Estado</th><th className="px-3 py-3 font-semibold">Actualizado</th><th className="px-3 py-3 font-semibold">Acciones</th></tr></thead><tbody className="divide-y divide-slate-100">
+                  {filteredRows.map((row) => <tr key={row.id}><td className="px-3 py-4"><p className="font-semibold text-slate-950">{row.product.name}</p><p className="mt-1 font-mono text-xs text-slate-500">{row.product.sku}{row.product.active ? "" : " · Inactivo"}</p></td><td className="px-3 py-4 text-slate-700">{row.ownerLabel}</td><td className="px-3 py-4 font-semibold text-slate-800">{row.inventory ? row.movementSummary.initialStock : "—"}</td><td className="px-3 py-4 font-semibold text-emerald-700">{row.inventory ? row.movementSummary.entries : "—"}</td><td className="px-3 py-4 font-semibold text-blue-700">{row.inventory ? row.movementSummary.sold : "—"}</td><td className="px-3 py-4 font-semibold text-amber-700">{row.inventory ? row.movementSummary.otherExits : "—"}</td><td className="px-3 py-4"><p className="text-lg font-bold text-slate-950">{row.inventory?.quantity ?? "—"}</p>{row.inventory && !row.movementSummary.consistent ? <p className="mt-1 text-xs font-semibold text-red-700" title={`Histórico esperado: ${row.movementSummary.expectedStock}`}>Histórico inconsistente</p> : null}</td><td className="px-3 py-4 text-slate-700">{row.product.minimumStock}</td><td className="px-3 py-4"><StockBadge status={row.status} /></td><td className="px-3 py-4 text-xs text-slate-500">{row.inventory ? new Intl.DateTimeFormat("es-PE", { dateStyle: "short", timeStyle: "short" }).format(row.inventory.updatedAt.toDate()) : "—"}</td><td className="px-3 py-4"><RowActions isAdmin={isAdmin} onAdjust={() => setOperation({ mode: "adjust", row })} onHistory={() => void openHistory(row)} onInitial={() => setOperation({ mode: "initial", row })} row={row} /></td></tr>)}
                 </tbody></table>
               </div>
-              <div className="grid gap-4 lg:hidden">{filteredRows.map((row) => <article className="rounded-2xl border border-slate-200 p-4 shadow-sm" key={row.id}><div className="flex items-start justify-between gap-3"><div><h3 className="font-bold text-slate-950">{row.product.name}</h3><p className="mt-1 font-mono text-xs text-slate-500">{row.product.sku}</p></div><StockBadge status={row.status} /></div><dl className="mt-4 grid grid-cols-2 gap-3 text-sm"><div><dt className="text-xs text-slate-500">Propietario</dt><dd className="mt-1 font-medium text-slate-800">{row.ownerLabel}</dd></div><div><dt className="text-xs text-slate-500">Stock actual</dt><dd className="mt-1 text-lg font-bold text-slate-950">{row.inventory?.quantity ?? "—"}</dd></div><div><dt className="text-xs text-slate-500">Stock mínimo</dt><dd className="mt-1 font-medium text-slate-800">{row.product.minimumStock}</dd></div><div><dt className="text-xs text-slate-500">Actualizado</dt><dd className="mt-1 text-xs text-slate-700">{row.inventory ? new Intl.DateTimeFormat("es-PE", { dateStyle: "short", timeStyle: "short" }).format(row.inventory.updatedAt.toDate()) : "—"}</dd></div></dl><div className="mt-4 border-t border-slate-100 pt-4"><RowActions isAdmin={isAdmin} onAdjust={() => setOperation({ mode: "adjust", row })} onHistory={() => void openHistory(row)} onInitial={() => setOperation({ mode: "initial", row })} row={row} /></div></article>)}</div>
+              <div className="grid gap-4 lg:hidden">{filteredRows.map((row) => <article className="rounded-2xl border border-slate-200 p-4 shadow-sm" key={row.id}><div className="flex items-start justify-between gap-3"><div><h3 className="font-bold text-slate-950">{row.product.name}</h3><p className="mt-1 font-mono text-xs text-slate-500">{row.product.sku}</p><p className="mt-1 text-xs font-medium text-slate-600">{row.ownerLabel}</p></div><StockBadge status={row.status} /></div><dl className="mt-4 grid grid-cols-2 gap-3 text-sm"><div><dt className="text-xs text-slate-500">Stock inicial</dt><dd className="mt-1 font-semibold text-slate-900">{row.inventory ? row.movementSummary.initialStock : "—"}</dd></div><div><dt className="text-xs text-slate-500">Entradas</dt><dd className="mt-1 font-semibold text-emerald-700">{row.inventory ? row.movementSummary.entries : "—"}</dd></div><div><dt className="text-xs text-slate-500">Vendido</dt><dd className="mt-1 font-semibold text-blue-700">{row.inventory ? row.movementSummary.sold : "—"}</dd></div><div><dt className="text-xs text-slate-500">Otras salidas</dt><dd className="mt-1 font-semibold text-amber-700">{row.inventory ? row.movementSummary.otherExits : "—"}</dd></div><div><dt className="text-xs text-slate-500">Stock actual</dt><dd className="mt-1 text-lg font-bold text-slate-950">{row.inventory?.quantity ?? "—"}</dd></div><div><dt className="text-xs text-slate-500">Stock mínimo</dt><dd className="mt-1 font-medium text-slate-800">{row.product.minimumStock}</dd></div><div className="col-span-2"><dt className="text-xs text-slate-500">Actualizado</dt><dd className="mt-1 text-xs text-slate-700">{row.inventory ? new Intl.DateTimeFormat("es-PE", { dateStyle: "short", timeStyle: "short" }).format(row.inventory.updatedAt.toDate()) : "—"}</dd></div></dl>{row.inventory && !row.movementSummary.consistent ? <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">El histórico esperado ({row.movementSummary.expectedStock}) no coincide con el stock actual. No se modificó ningún dato.</p> : null}<div className="mt-4 border-t border-slate-100 pt-4"><RowActions isAdmin={isAdmin} onAdjust={() => setOperation({ mode: "adjust", row })} onHistory={() => void openHistory(row)} onInitial={() => setOperation({ mode: "initial", row })} row={row} /></div></article>)}</div>
             </>
           )}
         </div>

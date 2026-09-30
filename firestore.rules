@@ -295,7 +295,7 @@ service cloud.firestore {
           'createdBy', 'createdAt', 'updatedAt'
         ])
         && data.number is string
-        && data.number.matches('^REP-[0-9]{6,}$')
+        && data.number.matches('^(REP-[0-9]{6,}|SOL-[A-Za-z0-9]{20})$')
         && data.status in ['pending', 'sent', 'received', 'cancelled']
         && data.agentId is string
         && validReplenishmentItems(data.items)
@@ -304,16 +304,28 @@ service cloud.firestore {
         && data.createdAt is timestamp
         && data.updatedAt is timestamp
         && (
+          !data.keys().hasAny(['origin', 'requestedBy', 'requestedAt', 'requestNotes'])
+          || data.origin == 'admin'
+            && !data.keys().hasAny(['requestedBy', 'requestedAt', 'requestNotes'])
+          || data.origin == 'agent_request'
+            && data.keys().hasAll(['requestedBy', 'requestedAt', 'requestNotes'])
+            && data.requestedBy is string
+            && data.requestedAt is timestamp
+            && data.requestNotes is string
+        )
+        && (
           data.status == 'pending'
             && data.keys().hasOnly([
               'number', 'status', 'agentId', 'items', 'notes',
-              'createdBy', 'createdAt', 'updatedAt'
+              'createdBy', 'createdAt', 'updatedAt', 'origin',
+              'requestedBy', 'requestedAt', 'requestNotes'
             ])
           || data.status == 'sent'
             && data.keys().hasAll(['sentBy', 'sentAt'])
             && data.keys().hasOnly([
               'number', 'status', 'agentId', 'items', 'notes',
-              'createdBy', 'createdAt', 'updatedAt', 'sentBy', 'sentAt'
+              'createdBy', 'createdAt', 'updatedAt', 'sentBy', 'sentAt',
+              'origin', 'requestedBy', 'requestedAt', 'requestNotes'
             ])
             && data.sentBy is string
             && data.sentAt is timestamp
@@ -322,7 +334,8 @@ service cloud.firestore {
             && data.keys().hasOnly([
               'number', 'status', 'agentId', 'items', 'notes',
               'createdBy', 'createdAt', 'updatedAt', 'sentBy', 'sentAt',
-              'receivedBy', 'receivedAt'
+              'receivedBy', 'receivedAt', 'origin', 'requestedBy',
+              'requestedAt', 'requestNotes'
             ])
             && data.sentBy is string
             && data.sentAt is timestamp
@@ -333,10 +346,30 @@ service cloud.firestore {
             && data.keys().hasOnly([
               'number', 'status', 'agentId', 'items', 'notes',
               'createdBy', 'createdAt', 'updatedAt',
-              'cancelledBy', 'cancelledAt'
+              'cancelledBy', 'cancelledAt', 'origin', 'requestedBy',
+              'requestedAt', 'requestNotes'
             ])
             && data.cancelledBy is string
             && data.cancelledAt is timestamp
+        );
+    }
+
+    function unchangedReplenishmentOrigin(before, after) {
+      return !before.keys().hasAny(['origin']) && !after.keys().hasAny(['origin'])
+        || before.origin == 'admin' && after.origin == 'admin'
+        || before.origin == 'agent_request'
+          && after.origin == 'agent_request'
+          && after.requestedBy == before.requestedBy
+          && after.requestedAt == before.requestedAt
+          && after.requestNotes == before.requestNotes;
+    }
+
+    function validPendingReplenishmentAdminEdit(before, after) {
+      return unchangedReplenishmentOrigin(before, after)
+        && (
+          !before.keys().hasAny(['origin'])
+          || before.origin == 'admin'
+          || before.origin == 'agent_request' && after.agentId == before.agentId
         );
     }
 
@@ -346,7 +379,8 @@ service cloud.firestore {
         && after.items == before.items
         && after.notes == before.notes
         && after.createdBy == before.createdBy
-        && after.createdAt == before.createdAt;
+        && after.createdAt == before.createdAt
+        && unchangedReplenishmentOrigin(before, after);
     }
 
     function itemMatches(items, productId, quantity) {
@@ -1330,12 +1364,24 @@ service cloud.firestore {
       allow read: if isAdmin()
         || isAgent() && resource.data.agentId == request.auth.uid;
 
-      allow create: if isAdmin()
-        && validReplenishmentShape(request.resource.data)
+      allow create: if validReplenishmentShape(request.resource.data)
         && request.resource.data.status == 'pending'
         && request.resource.data.createdBy == request.auth.uid
         && validReplenishmentAgent(request.resource.data.agentId)
-        && validActiveReplenishmentProducts(request.resource.data.items);
+        && validActiveReplenishmentProducts(request.resource.data.items)
+        && (
+          isAdmin()
+            && request.resource.data.number.matches('^REP-[0-9]{6,}$')
+            && (
+              !request.resource.data.keys().hasAny(['origin'])
+              || request.resource.data.origin == 'admin'
+            )
+          || isAgent()
+            && request.resource.data.agentId == request.auth.uid
+            && request.resource.data.number == 'SOL-' + replenishmentId
+            && request.resource.data.origin == 'agent_request'
+            && request.resource.data.requestedBy == request.auth.uid
+        );
 
       allow update: if validReplenishmentShape(request.resource.data)
         && (
@@ -1345,6 +1391,10 @@ service cloud.firestore {
             && request.resource.data.number == resource.data.number
             && request.resource.data.createdBy == resource.data.createdBy
             && request.resource.data.createdAt == resource.data.createdAt
+            && validPendingReplenishmentAdminEdit(
+              resource.data,
+              request.resource.data
+            )
             && validReplenishmentAgent(request.resource.data.agentId)
             && validActiveReplenishmentProducts(request.resource.data.items)
           || isAdmin()

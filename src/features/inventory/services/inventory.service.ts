@@ -338,6 +338,23 @@ export async function listInventoryMovements(
     .sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
 }
 
+export async function listInventoryOverviewMovements(
+  role: "admin" | "agent",
+  actorUid: string,
+): Promise<InventoryMovement[]> {
+  const movementsRef = collection(getFirebaseDb(), "inventory_movements");
+  const movementsQuery =
+    role === "admin"
+      ? query(movementsRef)
+      : query(
+          movementsRef,
+          where("ownerType", "==", "agent"),
+          where("ownerId", "==", actorUid),
+        );
+  const snapshot = await getDocs(movementsQuery);
+  return snapshot.docs.map(parseMovement);
+}
+
 export function getInventoryErrorMessage(error: unknown): string {
   if (error instanceof InventoryAlreadyInitializedError) {
     return "El inventario ya fue inicializado. Usa un ajuste.";

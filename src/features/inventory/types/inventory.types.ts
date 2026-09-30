@@ -67,6 +67,15 @@ export interface InventoryAgent {
   email: string;
 }
 
+export interface InventoryMovementSummary {
+  initialStock: number;
+  entries: number;
+  sold: number;
+  otherExits: number;
+  expectedStock: number;
+  consistent: boolean;
+}
+
 export interface InventoryViewRow {
   id: string;
   inventory: InventoryRecord | null;
@@ -75,4 +84,5 @@ export interface InventoryViewRow {
   ownerType: InventoryOwnerType;
   product: Product;
   status: InventoryStockStatus;
+  movementSummary: InventoryMovementSummary;
 }

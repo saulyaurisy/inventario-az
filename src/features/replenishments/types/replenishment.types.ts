@@ -6,6 +6,8 @@ export type ReplenishmentStatus =
   | "received"
   | "cancelled";
 
+export type ReplenishmentOrigin = "admin" | "agent_request";
+
 export interface ReplenishmentItem {
   productId: string;
   quantity: number;
@@ -18,6 +20,10 @@ export interface Replenishment {
   agentId: string;
   items: ReplenishmentItem[];
   notes?: string;
+  origin: ReplenishmentOrigin;
+  requestedBy?: string;
+  requestedAt?: Timestamp;
+  requestNotes?: string;
   createdBy: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
@@ -33,6 +39,11 @@ export interface ReplenishmentInput {
   agentId: string;
   items: ReplenishmentItem[];
   notes?: string;
+}
+
+export interface ReplenishmentRequestInput {
+  items: ReplenishmentItem[];
+  requestNotes?: string;
 }
 
 export interface ReplenishmentFilters {

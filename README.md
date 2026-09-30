@@ -165,6 +165,8 @@ firebase deploy --only auth,firestore:rules
 - El stock inicial y cada ajuste se confirman en una transacción que también crea exactamente un documento inmutable en `inventory_movements`.
 - Las reglas cruzan `lastMovementId`, cantidades anterior/posterior, producto, propietario y autor para impedir escrituras directas de `quantity` o movimientos sueltos.
 - Solo el administrador puede inicializar o ajustar stock. Los agentes consultan únicamente sus propios registros y no pueden escribir.
+- La vista de inventario agrega, de forma informativa, stock inicial, entradas, vendido y otras salidas directamente desde `inventory_movements`. `inventory.quantity` continúa siendo la única fuente de verdad del stock actual y cualquier diferencia histórica se señala sin modificar datos.
+- El administrador consulta el historial global; el agente solicita desde Firestore únicamente movimientos con `ownerType = agent` y su propio `ownerId`. La carga agrupada evita una consulta por cada fila y el historial detallado reutiliza el diálogo de movimientos existente.
 - La inicialización exige un producto activo y, para stock de agente, un perfil activo con rol `agent`. Los ajustes posteriores permiten correcciones históricas aunque el producto se desactive.
 - Las salidas nunca pueden dejar cantidad negativa y todas las cantidades se manejan como enteros positivos.
 - Los movimientos recientes también alimentan el módulo Kardex; no se implementan ventas, compras, devoluciones ni transferencias entre agentes.
@@ -181,7 +183,8 @@ firebase deploy --only auth,firestore:rules
 ## Reposiciones
 
 - La ruta `/replenishments` gestiona el flujo `Pendiente → Enviada → Recibida`; una reposición pendiente también puede cancelarse.
-- Solo el administrador crea, edita, cancela y envía. El agente consulta exclusivamente sus reposiciones y confirma la recepción de las que le corresponden.
+- El administrador crea, edita, cancela y envía. Además, un agente puede registrar para sí mismo una solicitud `pending` con origen `agent_request`; no puede elegir otro agente, editarla, enviarla ni generar stock o movimientos. El agente consulta exclusivamente sus reposiciones y confirma la recepción de las que le corresponden.
+- Las solicitudes de agente usan un número determinístico `SOL-{documentId}` y conservan solicitante, fecha y nota originales. El administrador puede revisar y ajustar sus productos antes de reutilizar el flujo seguro de envío existente.
 - Crear, editar o cancelar no modifica existencias. Enviar descuenta stock de empresa y crea movimientos `replenishment_out`; recibir aumenta stock del agente y crea movimientos `replenishment_in`.
 - Cada transición de stock se ejecuta en una única transacción de Firestore y usa identificadores determinísticos de movimiento, por lo que los reintentos y la doble confirmación no duplican cantidades ni historial.
 - `inventory` e `inventory_movements` continúan siendo las únicas fuentes de stock e historial. Las reposiciones no guardan cantidades paralelas fuera de sus ítems planificados.

@@ -23,6 +23,8 @@ import type {
   Replenishment,
   ReplenishmentInput,
   ReplenishmentItem,
+  ReplenishmentOrigin,
+  ReplenishmentRequestInput,
   ReplenishmentStatus,
   ReplenishmentUser,
 } from "../types/replenishment.types";
@@ -41,6 +43,10 @@ export class ReplenishmentAgentError extends Error {}
 
 function isStatus(value: unknown): value is ReplenishmentStatus {
   return ["pending", "sent", "received", "cancelled"].includes(String(value));
+}
+
+function isOrigin(value: unknown): value is ReplenishmentOrigin {
+  return value === "admin" || value === "agent_request";
 }
 
 function parseItems(value: unknown): ReplenishmentItem[] | null {
@@ -86,6 +92,16 @@ function parseReplenishment(snapshot: DocumentSnapshot): Replenishment {
     agentId: data.agentId,
     items,
     ...(typeof data.notes === "string" ? { notes: data.notes } : {}),
+    origin: isOrigin(data.origin) ? data.origin : "admin",
+    ...(typeof data.requestedBy === "string"
+      ? { requestedBy: data.requestedBy }
+      : {}),
+    ...(data.requestedAt instanceof Timestamp
+      ? { requestedAt: data.requestedAt }
+      : {}),
+    ...(typeof data.requestNotes === "string"
+      ? { requestNotes: data.requestNotes }
+      : {}),
     createdBy: data.createdBy,
     createdAt: data.createdAt,
     updatedAt: data.updatedAt,
@@ -200,6 +216,39 @@ export async function createReplenishment(
       agentId: input.agentId,
       items: input.items,
       notes: input.notes ?? "",
+      origin: "admin",
+      createdBy: actorUid,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+  });
+  return replenishmentRef.id;
+}
+
+export async function createReplenishmentRequest(
+  rawInput: ReplenishmentRequestInput,
+  actorUid: string,
+): Promise<string> {
+  const input = sanitizeInput({
+    agentId: actorUid,
+    items: rawInput.items,
+    notes: rawInput.requestNotes,
+  });
+  const db = getFirebaseDb();
+  const replenishmentRef = doc(collection(db, "replenishments"));
+
+  await runTransaction(db, async (transaction) => {
+    await readValidAgentAndProducts(transaction, input, true);
+    transaction.set(replenishmentRef, {
+      number: `SOL-${replenishmentRef.id}`,
+      status: "pending",
+      agentId: actorUid,
+      items: input.items,
+      notes: "",
+      origin: "agent_request",
+      requestedBy: actorUid,
+      requestedAt: serverTimestamp(),
+      requestNotes: input.notes ?? "",
       createdBy: actorUid,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
