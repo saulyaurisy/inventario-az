@@ -11,7 +11,6 @@ import {
   getInventoryErrorMessage,
   listInventory,
   listInventoryAgents,
-  listInventoryMovements,
   listInventoryOverviewMovements,
   setInitialStock,
 } from "../services/inventory.service";
@@ -27,6 +26,7 @@ import {
   getStockStatus,
   STOCK_STATUS_LABELS,
 } from "../utils/inventory-utils";
+import { InventoryDetailDialog } from "./inventory-detail-dialog";
 import { InventoryMovementsDialog } from "./inventory-movements-dialog";
 import { InventoryOperationDialog } from "./inventory-operation-dialog";
 
@@ -45,28 +45,29 @@ function StockBadge({ status }: { status: InventoryStockStatus }) {
 interface RowActionsProps {
   isAdmin: boolean;
   onAdjust: () => void;
-  onHistory: () => void;
+  onDetail: () => void;
   onInitial: () => void;
   row: InventoryViewRow;
 }
 
-function RowActions({ isAdmin, onAdjust, onHistory, onInitial, row }: RowActionsProps) {
+function RowActions({ isAdmin, onAdjust, onDetail, onInitial, row }: RowActionsProps) {
   if (!isAdmin) {
-    return row.inventory ? (
-      <button className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600" onClick={onHistory} type="button">Ver movimientos</button>
-    ) : <span className="text-xs text-slate-500">Sin movimientos</span>;
+    return <button className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600" onClick={onDetail} type="button">Ver detalle</button>;
   }
   if (!row.inventory) {
-    return row.product.active ? (
-      <button className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600" onClick={onInitial} type="button">Registrar stock inicial</button>
-    ) : (
-      <span className="text-xs font-medium text-slate-500">Producto inactivo</span>
+    return (
+      <div className="flex flex-wrap gap-2">
+        <button className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600" onClick={onDetail} type="button">Ver detalle</button>
+        {row.product.active ? (
+          <button className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600" onClick={onInitial} type="button">Registrar stock inicial</button>
+        ) : <span className="self-center text-xs font-medium text-slate-500">Producto inactivo</span>}
+      </div>
     );
   }
   return (
     <div className="flex flex-wrap gap-2">
+      <button className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600" onClick={onDetail} type="button">Ver detalle</button>
       <button className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600" onClick={onAdjust} type="button">Ajustar inventario</button>
-      <button className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600" onClick={onHistory} type="button">Ver movimientos</button>
     </div>
   );
 }
@@ -84,10 +85,9 @@ export function InventoryContent() {
   const [ownerFilter, setOwnerFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState<"all" | InventoryStockStatus>("all");
   const [operation, setOperation] = useState<{ mode: "initial" | "adjust"; row: InventoryViewRow } | null>(null);
+  const [detailRow, setDetailRow] = useState<InventoryViewRow | null>(null);
   const [historyRow, setHistoryRow] = useState<InventoryViewRow | null>(null);
   const [movements, setMovements] = useState<InventoryMovement[]>([]);
-  const [movementsLoading, setMovementsLoading] = useState(false);
-  const [movementsError, setMovementsError] = useState<string | null>(null);
   const isAdmin = profile?.role === "admin";
 
   const loadData = useCallback(async () => {
@@ -252,19 +252,14 @@ export function InventoryContent() {
     }
   }
 
-  async function openHistory(row: InventoryViewRow) {
+  function openHistory(row: InventoryViewRow) {
     if (!row.inventory) return;
     setHistoryRow(row);
-    setMovements([]);
-    setMovementsError(null);
-    setMovementsLoading(true);
-    try {
-      setMovements(await listInventoryMovements(row.inventory.id));
-    } catch (error) {
-      setMovementsError(getInventoryErrorMessage(error));
-    } finally {
-      setMovementsLoading(false);
-    }
+    setMovements(
+      overviewMovements
+        .filter((movement) => movement.inventoryId === row.inventory?.id)
+        .sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis()),
+    );
   }
 
   return (
@@ -288,19 +283,20 @@ export function InventoryContent() {
           {loading ? <div className="flex min-h-48 items-center justify-center text-sm font-medium text-slate-600">Cargando inventario...</div> : loadError ? <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center" role="alert"><p className="font-semibold text-red-900">No se pudo cargar el inventario.</p><p className="mt-1 text-sm text-red-800">{loadError}</p><button className="mt-4 rounded-xl bg-red-700 px-4 py-2 text-sm font-semibold text-white hover:bg-red-800" onClick={() => void loadData()} type="button">Reintentar</button></div> : filteredRows.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center"><p className="font-semibold text-slate-900">No hay inventario que coincida.</p><p className="mt-1 text-sm text-slate-500">Prueba con otros filtros o términos.</p></div> : (
             <>
               <p className="text-sm text-slate-500">{filteredRows.length} {filteredRows.length === 1 ? "registro" : "registros"}</p>
-              <div className="hidden overflow-x-auto rounded-2xl border border-slate-200 lg:block">
-                <table className="min-w-[1420px] divide-y divide-slate-200 text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-3 py-3 font-semibold">Producto</th><th className="px-3 py-3 font-semibold">Propietario</th><th className="px-3 py-3 font-semibold">Stock inicial</th><th className="px-3 py-3 font-semibold">Entradas</th><th className="px-3 py-3 font-semibold">Vendido</th><th className="px-3 py-3 font-semibold">Otras salidas</th><th className="px-3 py-3 font-semibold">Stock actual</th><th className="px-3 py-3 font-semibold">Stock mínimo</th><th className="px-3 py-3 font-semibold">Estado</th><th className="px-3 py-3 font-semibold">Actualizado</th><th className="px-3 py-3 font-semibold">Acciones</th></tr></thead><tbody className="divide-y divide-slate-100">
-                  {filteredRows.map((row) => <tr key={row.id}><td className="px-3 py-4"><p className="font-semibold text-slate-950">{row.product.name}</p><p className="mt-1 font-mono text-xs text-slate-500">{row.product.sku}{row.product.active ? "" : " · Inactivo"}</p></td><td className="px-3 py-4 text-slate-700">{row.ownerLabel}</td><td className="px-3 py-4 font-semibold text-slate-800">{row.inventory ? row.movementSummary.initialStock : "—"}</td><td className="px-3 py-4 font-semibold text-emerald-700">{row.inventory ? row.movementSummary.entries : "—"}</td><td className="px-3 py-4 font-semibold text-blue-700">{row.inventory ? row.movementSummary.sold : "—"}</td><td className="px-3 py-4 font-semibold text-amber-700">{row.inventory ? row.movementSummary.otherExits : "—"}</td><td className="px-3 py-4"><p className="text-lg font-bold text-slate-950">{row.inventory?.quantity ?? "—"}</p>{row.inventory && !row.movementSummary.consistent ? <p className="mt-1 text-xs font-semibold text-red-700" title={`Histórico esperado: ${row.movementSummary.expectedStock}`}>Histórico inconsistente</p> : null}</td><td className="px-3 py-4 text-slate-700">{row.product.minimumStock}</td><td className="px-3 py-4"><StockBadge status={row.status} /></td><td className="px-3 py-4 text-xs text-slate-500">{row.inventory ? new Intl.DateTimeFormat("es-PE", { dateStyle: "short", timeStyle: "short" }).format(row.inventory.updatedAt.toDate()) : "—"}</td><td className="px-3 py-4"><RowActions isAdmin={isAdmin} onAdjust={() => setOperation({ mode: "adjust", row })} onHistory={() => void openHistory(row)} onInitial={() => setOperation({ mode: "initial", row })} row={row} /></td></tr>)}
+              <div className="hidden rounded-2xl border border-slate-200 lg:block">
+                <table className="w-full table-fixed divide-y divide-slate-200 text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="w-[24%] px-3 py-3 font-semibold">Producto</th><th className="px-3 py-3 font-semibold">Stock inicial</th><th className="px-3 py-3 font-semibold">Entradas</th><th className="px-3 py-3 font-semibold">Vendido</th><th className="px-3 py-3 font-semibold">Stock actual</th><th className="px-3 py-3 font-semibold">Stock mínimo</th><th className="w-[13%] px-3 py-3 font-semibold">Estado</th><th className="w-[19%] px-3 py-3 font-semibold">Acción</th></tr></thead><tbody className="divide-y divide-slate-100">
+                  {filteredRows.map((row) => <tr key={row.id}><td className="px-3 py-4"><p className="break-words font-semibold text-slate-950">{row.product.name}</p><p className="mt-1 break-all font-mono text-xs text-slate-500">{row.product.sku}{row.product.active ? "" : " · Inactivo"}</p></td><td className="px-3 py-4 font-semibold text-slate-800">{row.inventory ? row.movementSummary.initialStock : "—"}</td><td className="px-3 py-4 font-semibold text-emerald-700">{row.inventory ? row.movementSummary.entries : "—"}</td><td className="px-3 py-4 font-semibold text-blue-700">{row.inventory ? row.movementSummary.sold : "—"}</td><td className="px-3 py-4"><p className="text-lg font-bold text-slate-950">{row.inventory?.quantity ?? "—"}</p>{row.inventory && !row.movementSummary.consistent ? <p className="mt-1 text-xs font-semibold text-red-700" title={`Histórico esperado: ${row.movementSummary.expectedStock}`}>Revisar histórico</p> : null}</td><td className="px-3 py-4 text-slate-700">{row.product.minimumStock}</td><td className="px-3 py-4"><StockBadge status={row.status} /></td><td className="px-3 py-4"><RowActions isAdmin={isAdmin} onAdjust={() => setOperation({ mode: "adjust", row })} onDetail={() => setDetailRow(row)} onInitial={() => setOperation({ mode: "initial", row })} row={row} /></td></tr>)}
                 </tbody></table>
               </div>
-              <div className="grid gap-4 lg:hidden">{filteredRows.map((row) => <article className="rounded-2xl border border-slate-200 p-4 shadow-sm" key={row.id}><div className="flex items-start justify-between gap-3"><div><h3 className="font-bold text-slate-950">{row.product.name}</h3><p className="mt-1 font-mono text-xs text-slate-500">{row.product.sku}</p><p className="mt-1 text-xs font-medium text-slate-600">{row.ownerLabel}</p></div><StockBadge status={row.status} /></div><dl className="mt-4 grid grid-cols-2 gap-3 text-sm"><div><dt className="text-xs text-slate-500">Stock inicial</dt><dd className="mt-1 font-semibold text-slate-900">{row.inventory ? row.movementSummary.initialStock : "—"}</dd></div><div><dt className="text-xs text-slate-500">Entradas</dt><dd className="mt-1 font-semibold text-emerald-700">{row.inventory ? row.movementSummary.entries : "—"}</dd></div><div><dt className="text-xs text-slate-500">Vendido</dt><dd className="mt-1 font-semibold text-blue-700">{row.inventory ? row.movementSummary.sold : "—"}</dd></div><div><dt className="text-xs text-slate-500">Otras salidas</dt><dd className="mt-1 font-semibold text-amber-700">{row.inventory ? row.movementSummary.otherExits : "—"}</dd></div><div><dt className="text-xs text-slate-500">Stock actual</dt><dd className="mt-1 text-lg font-bold text-slate-950">{row.inventory?.quantity ?? "—"}</dd></div><div><dt className="text-xs text-slate-500">Stock mínimo</dt><dd className="mt-1 font-medium text-slate-800">{row.product.minimumStock}</dd></div><div className="col-span-2"><dt className="text-xs text-slate-500">Actualizado</dt><dd className="mt-1 text-xs text-slate-700">{row.inventory ? new Intl.DateTimeFormat("es-PE", { dateStyle: "short", timeStyle: "short" }).format(row.inventory.updatedAt.toDate()) : "—"}</dd></div></dl>{row.inventory && !row.movementSummary.consistent ? <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">El histórico esperado ({row.movementSummary.expectedStock}) no coincide con el stock actual. No se modificó ningún dato.</p> : null}<div className="mt-4 border-t border-slate-100 pt-4"><RowActions isAdmin={isAdmin} onAdjust={() => setOperation({ mode: "adjust", row })} onHistory={() => void openHistory(row)} onInitial={() => setOperation({ mode: "initial", row })} row={row} /></div></article>)}</div>
+              <div className="grid gap-4 lg:hidden">{filteredRows.map((row) => <article className="min-w-0 rounded-2xl border border-slate-200 p-4 shadow-sm" key={row.id}><div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="break-words font-bold text-slate-950">{row.product.name}</h3><p className="mt-1 break-all font-mono text-xs text-slate-500">{row.product.sku}</p></div><StockBadge status={row.status} /></div><div className="mt-4 rounded-xl bg-slate-950 p-4 text-white"><p className="text-xs font-medium text-slate-300">Stock actual</p><p className="mt-1 text-2xl font-bold">{row.inventory?.quantity ?? "—"}</p></div><dl className="mt-4 grid grid-cols-3 gap-3 text-sm"><div><dt className="text-xs text-slate-500">Stock mínimo</dt><dd className="mt-1 font-semibold text-slate-900">{row.product.minimumStock}</dd></div><div><dt className="text-xs text-slate-500">Entradas</dt><dd className="mt-1 font-semibold text-emerald-700">{row.inventory ? row.movementSummary.entries : "—"}</dd></div><div><dt className="text-xs text-slate-500">Vendido</dt><dd className="mt-1 font-semibold text-blue-700">{row.inventory ? row.movementSummary.sold : "—"}</dd></div></dl><div className="mt-4 border-t border-slate-100 pt-4"><RowActions isAdmin={isAdmin} onAdjust={() => setOperation({ mode: "adjust", row })} onDetail={() => setDetailRow(row)} onInitial={() => setOperation({ mode: "initial", row })} row={row} /></div></article>)}</div>
             </>
           )}
         </div>
       </div>
 
       {operation ? <InventoryOperationDialog key={`${operation.mode}-${operation.row.id}`} mode={operation.mode} onClose={() => setOperation(null)} onSubmit={handleOperation} row={operation.row} /> : null}
-      {historyRow ? <InventoryMovementsDialog actorLabels={actorLabels} error={movementsError} loading={movementsLoading} movements={movements} onClose={() => setHistoryRow(null)} row={historyRow} /> : null}
+      {detailRow ? <InventoryDetailDialog onClose={() => setDetailRow(null)} onViewMovements={() => { const row = detailRow; setDetailRow(null); openHistory(row); }} row={detailRow} /> : null}
+      {historyRow ? <InventoryMovementsDialog actorLabels={actorLabels} error={null} loading={false} movements={movements} onClose={() => setHistoryRow(null)} row={historyRow} /> : null}
     </section>
   );
 }
