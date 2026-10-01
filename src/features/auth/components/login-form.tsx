@@ -69,7 +69,7 @@ export function LoginForm() {
   }
 
   return (
-    <form className="mt-8 space-y-5" noValidate onSubmit={handleSubmit}>
+    <form className="mt-7 space-y-5" noValidate onSubmit={handleSubmit}>
       <div>
         <label className="text-sm font-medium text-slate-800" htmlFor="email">
           Correo electrónico
@@ -78,7 +78,7 @@ export function LoginForm() {
           aria-describedby={formErrors.email ? "email-error" : undefined}
           aria-invalid={Boolean(formErrors.email)}
           autoComplete="email"
-          className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+          className="mt-2 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100"
           disabled={loading}
           id="email"
           name="email"
@@ -107,7 +107,7 @@ export function LoginForm() {
           }
           aria-invalid={Boolean(formErrors.password)}
           autoComplete="current-password"
-          className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+          className="mt-2 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100"
           disabled={loading}
           id="password"
           name="password"
@@ -133,7 +133,7 @@ export function LoginForm() {
       ) : null}
 
       <button
-        className="flex w-full items-center justify-center rounded-lg bg-emerald-700 px-4 py-2.5 font-semibold text-white transition hover:bg-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+        className="flex min-h-11 w-full items-center justify-center rounded-lg bg-emerald-700 px-4 py-2.5 font-semibold text-white shadow-sm transition hover:bg-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
         disabled={loading}
         type="submit"
       >

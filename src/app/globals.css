@@ -1,24 +1,285 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
+  --background: #f3f6f4;
+  --foreground: #17211c;
+  --surface: #ffffff;
+  --surface-subtle: #f7f9f8;
+  --surface-muted: #edf2ef;
+  --border: #dce5df;
+  --border-strong: #c8d5cd;
+  --text-muted: #627067;
+  --brand: #157347;
+  --brand-strong: #0d5a36;
+  --brand-soft: #e6f4ec;
+  --sidebar: #13251d;
+  --shadow-surface: 0 1px 2px rgb(18 55 37 / 0.04), 0 12px 32px rgb(18 55 37 / 0.06);
+  --shadow-floating: 0 18px 48px rgb(18 55 37 / 0.14);
+  --radius-panel: 1.125rem;
+  --radius-control: 0.625rem;
 }
 
-* {
-  box-sizing: border-box;
+* { box-sizing: border-box; }
+
+html {
+  min-width: 320px;
+  scroll-behavior: smooth;
 }
 
 body {
-  min-height: 100vh;
+  min-height: 100dvh;
   margin: 0;
   overflow-x: hidden;
-  background: var(--background);
+  background: radial-gradient(circle at 82% -10%, rgb(21 115 71 / 0.07), transparent 30rem), var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: "Segoe UI Variable", "Aptos", "Segoe UI", Arial, sans-serif;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  text-rendering: optimizeLegibility;
 }
 
-button,
-a {
-  -webkit-tap-highlight-color: transparent;
+::selection { background: #bfe4cf; color: #123322; }
+
+button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
+
+button, a {
+  transition-duration: 160ms;
+  transition-property: color, background-color, border-color, box-shadow, opacity, transform;
+  transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+
+button:not(:disabled):active, a:active { transform: translateY(1px); }
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid rgb(21 115 71 / 0.2);
+  outline-offset: 2px;
+}
+
+.skip-link {
+  position: fixed;
+  left: 1rem;
+  top: 1rem;
+  z-index: 100;
+  translate: 0 -180%;
+  border-radius: var(--radius-control);
+  background: var(--sidebar);
+  color: white;
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  box-shadow: var(--shadow-floating);
+}
+
+.skip-link:focus { translate: 0; }
+
+.app-content {
+  width: 100%;
+  max-width: 120rem;
+  margin-inline: auto;
+  padding: 1.25rem 1rem 2.5rem;
+}
+
+.app-content h1, .app-content h2, .app-content h3 { text-wrap: balance; }
+.app-content p { text-wrap: pretty; }
+
+.app-content :is(input, select, textarea) {
+  min-height: 2.625rem;
+  border-color: var(--border-strong);
+  border-radius: var(--radius-control);
+  background-color: var(--surface);
+  color: var(--foreground);
+  box-shadow: inset 0 1px 1px rgb(18 55 37 / 0.025);
+}
+
+.app-content :is(input, select, textarea):focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgb(21 115 71 / 0.1);
+  outline: none;
+}
+
+.app-content :is(input, textarea)::placeholder { color: #87938c; }
+
+.app-content :is(input, select, textarea):disabled {
+  cursor: not-allowed;
+  background: var(--surface-muted);
+  color: var(--text-muted);
+}
+
+.app-content > section > div[class*="rounded-3xl"] {
+  border-color: var(--border);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-surface);
+}
+
+.app-content > section > div[class*="rounded-3xl"] > div:first-child[class*="border-b"] {
+  border-color: var(--border);
+  background: linear-gradient(135deg, #ffffff 0%, #f3f8f5 100%);
+  padding: 1.25rem;
+}
+
+.app-content > section > div[class*="rounded-3xl"] > div:first-child[class*="border-b"] h2 {
+  margin-top: 0.35rem;
+  font-size: 1.75rem;
+  line-height: 1.2;
+  letter-spacing: -0.035em;
+}
+
+.app-content > section > div[class*="rounded-3xl"] > div:first-child[class*="border-b"] p:first-child {
+  text-transform: none;
+  letter-spacing: 0.025em;
+}
+
+.app-content > section > div[class*="rounded-3xl"] > div[class*="space-y-6"] {
+  padding: 1.25rem;
+}
+
+.app-content div[class*="bg-slate-50"][class*="border"][class*="rounded-2xl"] {
+  border-color: var(--border);
+  background-color: var(--surface-subtle);
+}
+
+.app-content div[class*="overflow-x-auto"][class*="border"] {
+  width: 100%;
+  border-color: var(--border);
+  border-radius: 0.875rem;
+}
+
+.app-content div[class*="overflow-x-auto"][class*="border"] > table {
+  width: 100%;
+}
+
+.app-content table { font-variant-numeric: tabular-nums; }
+
+.app-content table thead {
+  background: #f2f6f3;
+  color: #59685f;
+  letter-spacing: 0.035em;
+}
+
+.app-content table th {
+  font-weight: 650;
+  text-transform: none;
+}
+
+.app-content table tbody tr { transition: background-color 140ms ease; }
+.app-content table tbody tr:hover { background: #f8fbf9; }
+.app-content table td, .app-content table th { border-color: #e8eeea; }
+
+/* The payment-proof grid has nine compact columns; keep it readable without
+   forcing a desktop scrollbar inherited from its legacy minimum width. */
+@media (min-width: 1024px) {
+  .app-content section[aria-labelledby="proofs-title"] table {
+    min-width: 64rem;
+  }
+
+  .app-content section[aria-labelledby="purchases-title"] table {
+    min-width: 64rem;
+  }
+
+  .app-content section[aria-labelledby="purchases-title"] tbody td:last-child {
+    width: 15.5rem;
+  }
+
+  .app-content section[aria-labelledby="purchases-title"] tbody td:last-child > div {
+    display: grid;
+    gap: 0.375rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .app-content section[aria-labelledby="purchases-title"] tbody td:last-child button {
+    min-width: 0;
+    padding-inline: 0.5rem;
+    white-space: nowrap;
+  }
+
+  .app-content section[aria-labelledby="purchases-title"] tbody td:last-child button:only-child {
+    grid-column: 1 / -1;
+  }
+
+  .app-content section[aria-labelledby="purchases-title"] tbody td:last-child p {
+    display: none;
+  }
+
+  .app-content section[aria-labelledby="replenishments-title"] table,
+  .app-content section[aria-labelledby="sales-title"] table {
+    min-width: 64rem;
+  }
+
+  .app-content section[aria-labelledby="proofs-title"] :is(th, td),
+  .app-content section[aria-labelledby="purchases-title"] :is(th, td),
+  .app-content section[aria-labelledby="replenishments-title"] :is(th, td),
+  .app-content section[aria-labelledby="sales-title"] :is(th, td) {
+    padding-inline: 0.75rem;
+  }
+}
+
+.app-content article[class*="rounded-2xl"][class*="border"] {
+  border-color: var(--border);
+  border-radius: 0.875rem;
+  box-shadow: 0 1px 2px rgb(18 55 37 / 0.035);
+}
+
+.app-content :is(button, a)[class*="bg-emerald-700"] {
+  border-radius: var(--radius-control);
+  background-color: var(--brand);
+  box-shadow: 0 1px 2px rgb(18 55 37 / 0.12);
+}
+
+.app-content :is(button, a)[class*="bg-emerald-700"]:hover { background-color: var(--brand-strong); }
+
+.app-content button[class*="bg-emerald-700"]:disabled {
+  background-color: #cbd5e1;
+  color: #475569;
+  box-shadow: none;
+}
+
+.app-content :is(button, a)[class*="border-slate-300"] {
+  border-color: var(--border-strong);
+  border-radius: var(--radius-control);
+  background-color: white;
+}
+
+.app-content :is(button, a)[class*="border-slate-300"]:hover {
+  border-color: #aabbb0;
+  background-color: var(--surface-subtle);
+}
+
+.app-content span[class*="rounded-full"][class*="text-xs"] {
+  border-radius: 0.5rem;
+  font-weight: 650;
+}
+
+.app-content [role="dialog"] {
+  border-color: var(--border);
+  box-shadow: var(--shadow-floating);
+}
+
+.app-content [role="alert"] { border-radius: 0.75rem; }
+
+.tabular-data {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+@media (min-width: 640px) {
+  .app-content { padding: 1.5rem 1.5rem 3rem; }
+  .app-content > section > div[class*="rounded-3xl"] > div:first-child[class*="border-b"] { padding: 1.5rem; }
+  .app-content > section > div[class*="rounded-3xl"] > div[class*="space-y-6"] { padding: 1.5rem; }
+}
+
+@media (min-width: 1280px) {
+  .app-content { padding-inline: 2rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
 }

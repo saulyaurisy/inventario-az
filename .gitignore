@@ -16,6 +16,8 @@
 # Local tooling
 .npm-cache/
 *.log
+.agents/
+skills-lock.json
 
 # Environment variables (the template is versioned)
 .env*

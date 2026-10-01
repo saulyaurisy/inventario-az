@@ -38,7 +38,10 @@ export function AppShell({ children }: React.PropsWithChildren) {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-[100dvh] bg-transparent">
+      <a className="skip-link" href="#main-content">
+        Saltar al contenido
+      </a>
       <DesktopSidebar {...sidebarProps} />
       <MobileSidebar
         {...sidebarProps}
@@ -46,7 +49,7 @@ export function AppShell({ children }: React.PropsWithChildren) {
         open={mobileMenuOpen}
       />
 
-      <div className="min-w-0 lg:pl-72">
+      <div className="min-w-0 lg:pl-64">
         <AppHeader
           isSigningOut={isSigningOut}
           onOpenMenu={() => setMobileMenuOpen(true)}
@@ -54,7 +57,7 @@ export function AppShell({ children }: React.PropsWithChildren) {
           profile={profile}
           title={currentItem?.label ?? "Sistema"}
         />
-        <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+        <main className="app-content" id="main-content" tabIndex={-1}>
           {error ? (
             <div
               className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
@@ -65,6 +68,10 @@ export function AppShell({ children }: React.PropsWithChildren) {
           ) : null}
           {children}
         </main>
+        <footer className="mx-auto flex w-full max-w-[120rem] flex-col gap-1 px-4 pb-6 text-center text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
+          <span>Inventario AZ · Operación comercial</span>
+          <span>Desarrollado por Saúl Yauri · <a className="font-semibold text-emerald-700 hover:text-emerald-900" href="https://www.instagram.com/syxnb.10" rel="noopener noreferrer" target="_blank">IG @syxnb.10</a> · <a className="font-semibold text-emerald-700 hover:text-emerald-900" href="https://wa.me/51961407627" rel="noopener noreferrer" target="_blank">WhatsApp</a></span>
+        </footer>
       </div>
     </div>
   );

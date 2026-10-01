@@ -22,7 +22,9 @@ export function MobileSidebar({ open, onClose, ...props }: MobileSidebarProps) {
       />
       <aside
         aria-label="Menú móvil"
-        className="relative h-full w-[min(19rem,86vw)] shadow-2xl"
+        aria-modal="true"
+        className="relative h-full w-[min(17rem,86vw)] shadow-2xl"
+        role="dialog"
       >
         <button
           aria-label="Cerrar menú"
