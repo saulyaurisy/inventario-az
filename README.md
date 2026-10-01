@@ -2,7 +2,7 @@
 
 Aplicación modular de ventas e inventario construida con Next.js, TypeScript, Tailwind CSS y Firebase.
 
-Actualmente incluye autenticación con email y contraseña, perfiles almacenados en Firestore, roles `admin` y `agent`, control de usuarios activos, sesión persistente, layout autenticado, productos, clientes, inventario, Kardex, reposiciones, ventas, proveedores, compras, comprobantes de pago y dashboard operativo. El módulo de reportes todavía no está implementado.
+Actualmente incluye autenticación con email y contraseña, perfiles almacenados en Firestore, roles `admin` y `agent`, control de usuarios activos, sesión persistente, layout autenticado, productos, clientes, inventario, Kardex, reposiciones, ventas, proveedores, compras, comprobantes de pago, dashboard operativo y reportes por rol.
 
 ## Requisitos
 
@@ -233,6 +233,18 @@ firebase deploy --only auth,firestore:rules
 - Incluye períodos locales predefinidos, ventas netas, ticket promedio, compras recibidas, stock y alertas, actividad reciente, gráfica diaria, top de productos y top de clientes.
 - Las ventas canceladas no forman parte de los importes netos. El stock bajo se define como `quantity <= minimumStock`; con mínimo cero, solo una cantidad cero activa la condición.
 - La actividad visible se limita a los 12 eventos más recientes después de componer las consultas autorizadas. El volumen actual permite agrupar en cliente sin métricas precalculadas; no se añadieron índices, reglas, dependencias, Storage, Functions ni Blaze.
+
+## Reportes
+
+- `/reports` calcula bajo demanda reportes de ventas, productos vendidos, clientes, métodos de pago, inventario y reposiciones. El administrador también dispone del reporte de compras.
+- No existe una colección `reports`: las métricas se derivan de ventas, sus snapshots históricos, `inventory`, `inventory_movements`, reposiciones y compras.
+- El agente consulta ventas, inventario, movimientos y reposiciones con su UID desde Firestore; nunca se descarga información global para filtrarla en el navegador. Compras y etiquetas globales de agentes solo se solicitan para administradores.
+- Los pagos combinados distribuyen el importe por cada componente de `payments[]`; las ventas históricas sin ese arreglo se interpretan mediante `paymentMethod` y `paymentReference`.
+- El inventario es un snapshot actual. Los acumulados históricos reutilizan el helper del módulo de inventario y `inventory.quantity` sigue siendo la fuente de verdad del stock actual.
+- Los períodos predefinidos y personalizados respetan límites locales de inicio y fin del día. El rango personalizado se limita a 366 días para evitar lecturas excesivas mientras no exista un backend analítico.
+- En el reporte de ventas, el número abre un detalle de solo lectura que reutiliza los snapshots históricos de productos, precios, descuentos y formas de pago almacenados en cada venta.
+- Ventas ofrece un CSV resumen con la lista compacta de productos y un CSV detalle con una fila por producto vendido. Los demás reportes visibles también pueden exportarse como CSV UTF-8 desde el navegador.
+- La impresión oculta navegación y controles para que el usuario pueda imprimir o guardar como PDF sin generación backend.
 
 ## Ejecución
 

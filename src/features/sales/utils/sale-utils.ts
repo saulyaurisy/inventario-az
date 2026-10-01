@@ -4,6 +4,7 @@ import type {
   CreateSaleInput,
   DiscountType,
   PaymentMethod,
+  Sale,
   SaleItem,
   SalePayment,
 } from "../types/sale.types";
@@ -21,6 +22,20 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   bonus: "Bono",
   other: "Otro",
 };
+
+export function getSalePayments(sale: Sale): SalePayment[] {
+  return sale.payments?.length
+    ? sale.payments
+    : [
+        {
+          method: sale.paymentMethod,
+          amount: sale.total,
+          ...(sale.paymentReference
+            ? { reference: sale.paymentReference }
+            : {}),
+        },
+      ];
+}
 
 export function validateSalePayments(payments: SalePayment[] | undefined, total: number): void {
   if (!payments) return;

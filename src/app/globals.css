@@ -283,3 +283,41 @@ textarea:focus-visible {
     transition-duration: 0.01ms !important;
   }
 }
+
+@media print {
+  @page { margin: 12mm; }
+
+  body {
+    overflow: visible;
+    background: white;
+    color: black;
+  }
+
+  .skip-link,
+  body aside,
+  body header,
+  body footer,
+  [data-print-hide],
+  .reports-controls,
+  .reports-tabs {
+    display: none !important;
+  }
+
+  .lg\:pl-64 { padding-left: 0 !important; }
+
+  .app-content {
+    max-width: none;
+    padding: 0;
+  }
+
+  .reports-page > header { display: none !important; }
+  .reports-print-heading { display: block !important; margin-bottom: 1rem; }
+  .reports-print-heading h1 { font-size: 1.5rem; font-weight: 700; }
+  .reports-print-heading p { margin-top: 0.25rem; color: #475569; font-size: 0.75rem; }
+  .reports-print-area section { box-shadow: none !important; break-inside: avoid; }
+  .reports-print-area .lg\:hidden { display: none !important; }
+  .reports-print-area .hidden.lg\:block { display: block !important; overflow: visible !important; }
+  .reports-print-area table { min-width: 0 !important; font-size: 9px; }
+  .reports-print-area th,
+  .reports-print-area td { padding: 5px !important; }
+}

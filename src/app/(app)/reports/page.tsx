@@ -1,13 +1,10 @@
-import { ModulePlaceholder } from "@/components/layout";
 import { RoleRoute } from "@/features/auth";
+import { ReportsContent } from "@/features/reports";
 
 export default function ReportsPage() {
   return (
-    <RoleRoute allowedRoles={["admin"]}>
-      <ModulePlaceholder
-        description="Indicadores y reportes para la toma de decisiones."
-        title="Reportes"
-      />
+    <RoleRoute allowedRoles={["admin", "agent"]}>
+      <ReportsContent />
     </RoleRoute>
   );
 }

@@ -1,4 +1,5 @@
 export { SalesContent } from "./components/sales-content";
+export { SaleDetailDialog } from "./components/sale-detail-dialog";
 export type {
   CreateSaleInput,
   DiscountType,
@@ -13,6 +14,7 @@ export type {
 export {
   calculateSale,
   formatMoney,
+  getSalePayments,
   MAX_AGENT_DISCOUNT_PERCENTAGE,
   MAX_SALE_ITEMS,
   MAX_SALE_PAYMENTS,

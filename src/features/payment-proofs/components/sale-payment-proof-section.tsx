@@ -6,22 +6,353 @@ import type { UserRole } from "@/features/auth";
 import type { Sale } from "@/features/sales";
 import { formatMoney, PAYMENT_METHOD_LABELS } from "@/features/sales";
 
-import { createOrUpdateProof, getPaymentProofErrorMessage, getProofBySaleId, rejectProof, verifyProof } from "../services/payment-proofs.service";
+import {
+  createOrUpdateProof,
+  getPaymentProofErrorMessage,
+  getProofBySaleId,
+  rejectProof,
+  verifyProof,
+} from "../services/payment-proofs.service";
 import { uploadPaymentProofAttachment } from "../services/payment-proof-attachment.service";
-import type { PaymentProofInput, SalePaymentProof } from "../types/payment-proof.types";
-import { PAYMENT_PROOF_STATUS_LABELS, PAYMENT_PROOF_TYPE_LABELS } from "../utils/payment-proof-utils";
-import { PaymentProofFormDialog } from "./payment-proof-form-dialog";
+import type {
+  PaymentProofInput,
+  SalePaymentProof,
+} from "../types/payment-proof.types";
+import {
+  PAYMENT_PROOF_STATUS_LABELS,
+  PAYMENT_PROOF_TYPE_LABELS,
+} from "../utils/payment-proof-utils";
 import { PaymentProofAttachmentViewer } from "./payment-proof-attachment-viewer";
+import { PaymentProofFormDialog } from "./payment-proof-form-dialog";
 
-const STATUS_STYLES = { provided: "bg-blue-100 text-blue-800", verified: "bg-emerald-100 text-emerald-800", rejected: "bg-red-100 text-red-800" } as const;
-const formatDate = (value: { toDate: () => Date }) => new Intl.DateTimeFormat("es-PE", { dateStyle: "medium", timeStyle: "short" }).format(value.toDate());
+const STATUS_STYLES = {
+  provided: "bg-blue-100 text-blue-800",
+  verified: "bg-emerald-100 text-emerald-800",
+  rejected: "bg-red-100 text-red-800",
+} as const;
 
-export function SalePaymentProofSection({ actorUid, role, sale }: { actorUid: string; role: UserRole; sale: Sale }) {
-  const [proof, setProof] = useState<SalePaymentProof | null>(null); const [loading, setLoading] = useState(true); const [error, setError] = useState<string | null>(null); const [notice, setNotice] = useState<string | null>(null); const [formOpen, setFormOpen] = useState(false); const [rejecting, setRejecting] = useState(false); const [reason, setReason] = useState(""); const [busy, setBusy] = useState(false);
-  const load = useCallback(async () => { setLoading(true); setError(null); try { setProof(await getProofBySaleId(sale.id)); } catch (cause) { setError(getPaymentProofErrorMessage(cause)); } finally { setLoading(false); } }, [sale.id]);
-  useEffect(() => { let ignore = false; getProofBySaleId(sale.id).then((value) => { if (!ignore) setProof(value); }).catch((cause: unknown) => { if (!ignore) setError(getPaymentProofErrorMessage(cause)); }).finally(() => { if (!ignore) setLoading(false); }); return () => { ignore = true; }; }, [sale.id]);
-  async function save(input: PaymentProofInput, file: File | null, onProgress: (percentage: number) => void) { try { await createOrUpdateProof(sale.id, input, actorUid); if (file) await uploadPaymentProofAttachment(sale.id, file, onProgress); setFormOpen(false); setNotice(file ? "Comprobante e imagen registrados para revisión." : "Comprobante registrado para revisión."); await load(); } catch (cause) { if (cause instanceof Error && !(cause.name === "FirebaseError")) throw cause; throw new Error(getPaymentProofErrorMessage(cause)); } }
-  async function review(action: "verify" | "reject") { setBusy(true); setError(null); try { if (action === "verify") await verifyProof(sale.id, actorUid); else await rejectProof(sale.id, actorUid, reason); setRejecting(false); setReason(""); setNotice(action === "verify" ? "Comprobante verificado." : "Comprobante rechazado."); await load(); } catch (cause) { setError(getPaymentProofErrorMessage(cause)); } finally { setBusy(false); } }
-  const canEdit = role === "agent" && sale.agentId === actorUid && sale.status === "completed" && proof?.status !== "verified";
-  return <section aria-labelledby="sale-proof-title" className="rounded-2xl border border-slate-200 p-4 sm:p-5"><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><h3 className="font-bold text-slate-950" id="sale-proof-title">Comprobante de pago</h3><p className="mt-1 text-xs text-slate-500">Metadata auditable y foto privada almacenada en Google Drive.</p></div>{canEdit ? <button className="rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white" onClick={() => setFormOpen(true)} type="button">{proof ? "Corregir comprobante" : "Registrar comprobante"}</button> : null}</div>{notice ? <p className="mt-4 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-900" role="status">{notice}</p> : null}{error ? <p className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-800" role="alert">{error}</p> : null}{loading ? <p className="mt-4 text-sm text-slate-500">Cargando comprobante...</p> : !proof ? <div className="mt-4 rounded-xl bg-amber-50 p-4"><p className="font-semibold text-amber-900">Sin comprobante registrado</p>{sale.paymentMethod !== "cash" ? <p className="mt-1 text-sm text-amber-800">Pago sin comprobante registrado.</p> : null}</div> : <div className="mt-4 space-y-4"><dl className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4"><div><dt className="text-xs text-slate-500">Estado</dt><dd className="mt-1"><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${STATUS_STYLES[proof.status]}`}>{PAYMENT_PROOF_STATUS_LABELS[proof.status]}</span></dd></div><div><dt className="text-xs text-slate-500">Tipo</dt><dd className="mt-1 font-semibold">{PAYMENT_PROOF_TYPE_LABELS[proof.type]}</dd></div><div><dt className="text-xs text-slate-500">Método / monto</dt><dd className="mt-1 font-semibold">{PAYMENT_METHOD_LABELS[proof.paymentMethod]} · {formatMoney(proof.amount)}</dd></div><div><dt className="text-xs text-slate-500">Registrado</dt><dd className="mt-1 font-semibold">{formatDate(proof.createdAt)}</dd></div></dl>{proof.operationReference ? <div><p className="text-xs font-semibold uppercase text-slate-500">Referencia</p><p className="mt-1 break-words text-sm">{proof.operationReference}</p></div> : null}{proof.notes ? <div><p className="text-xs font-semibold uppercase text-slate-500">Notas</p><p className="mt-1 whitespace-pre-wrap text-sm">{proof.notes}</p></div> : null}{proof.externalUrl ? <a className="inline-flex break-all text-sm font-semibold text-blue-700 underline" href={proof.externalUrl} rel="noopener noreferrer" target="_blank">Abrir referencia externa</a> : null}{proof.attachment ? <PaymentProofAttachmentViewer attachment={proof.attachment} saleId={sale.id} /> : null}{proof.status === "verified" ? <p className="text-sm text-emerald-800">Verificado el {proof.verifiedAt ? formatDate(proof.verifiedAt) : "—"}. El comprobante y su adjunto quedaron inmutables.</p> : null}{proof.status === "rejected" ? <p className="rounded-xl bg-red-50 p-3 text-sm text-red-800"><strong>Motivo:</strong> {proof.rejectionReason}</p> : null}{role === "admin" && proof.status === "provided" && sale.status === "completed" ? <div className="flex flex-col gap-2 border-t pt-4 sm:flex-row"><button className="rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60" disabled={busy} onClick={() => void review("verify")} type="button">Verificar</button><button className="rounded-xl border border-red-300 px-4 py-2.5 text-sm font-semibold text-red-700 disabled:opacity-60" disabled={busy} onClick={() => setRejecting(true)} type="button">Rechazar</button></div> : null}</div>}{sale.status === "cancelled" ? <p className="mt-4 rounded-xl bg-slate-100 p-3 text-sm text-slate-700">La venta está anulada. El comprobante se conserva para auditoría y no admite nuevas acciones.</p> : null}{formOpen ? <PaymentProofFormDialog initial={proof} onClose={() => setFormOpen(false)} onSubmit={save} /> : null}{rejecting ? <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/60 p-5"><section aria-labelledby="reject-proof-title" aria-modal="true" className="w-full max-w-lg rounded-3xl bg-white p-6" role="dialog"><h3 className="text-xl font-bold" id="reject-proof-title">Rechazar comprobante</h3><label className="mt-4 block text-sm font-semibold" htmlFor="proof-rejection-reason">Motivo obligatorio</label><textarea className="mt-2 min-h-28 w-full rounded-xl border border-slate-300 p-3 text-sm" id="proof-rejection-reason" maxLength={300} onChange={(event) => setReason(event.target.value)} value={reason} /><div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button className="rounded-xl border px-4 py-2.5 text-sm font-semibold" onClick={() => setRejecting(false)} type="button">Cancelar</button><button className="rounded-xl bg-red-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60" disabled={busy || !reason.trim()} onClick={() => void review("reject")} type="button">Confirmar rechazo</button></div></section></div> : null}</section>;
+const formatDate = (value: { toDate: () => Date }) =>
+  new Intl.DateTimeFormat("es-PE", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(value.toDate());
+
+interface SalePaymentProofSectionProps {
+  actorUid: string;
+  readOnly?: boolean;
+  role: UserRole;
+  sale: Sale;
+}
+
+export function SalePaymentProofSection({
+  actorUid,
+  readOnly = false,
+  role,
+  sale,
+}: SalePaymentProofSectionProps) {
+  const [proof, setProof] = useState<SalePaymentProof | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      setProof(await getProofBySaleId(sale.id));
+    } catch (cause) {
+      setError(getPaymentProofErrorMessage(cause));
+    } finally {
+      setLoading(false);
+    }
+  }, [sale.id]);
+
+  useEffect(() => {
+    let ignore = false;
+    getProofBySaleId(sale.id)
+      .then((value) => {
+        if (!ignore) setProof(value);
+      })
+      .catch((cause: unknown) => {
+        if (!ignore) setError(getPaymentProofErrorMessage(cause));
+      })
+      .finally(() => {
+        if (!ignore) setLoading(false);
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [sale.id]);
+
+  async function save(
+    input: PaymentProofInput,
+    file: File | null,
+    onProgress: (percentage: number) => void,
+  ) {
+    try {
+      await createOrUpdateProof(sale.id, input, actorUid);
+      if (file) await uploadPaymentProofAttachment(sale.id, file, onProgress);
+      setFormOpen(false);
+      setNotice(
+        file
+          ? "Comprobante e imagen registrados para revisión."
+          : "Comprobante registrado para revisión.",
+      );
+      await load();
+    } catch (cause) {
+      if (cause instanceof Error && cause.name !== "FirebaseError") throw cause;
+      throw new Error(getPaymentProofErrorMessage(cause));
+    }
+  }
+
+  async function review(action: "verify" | "reject") {
+    setBusy(true);
+    setError(null);
+    try {
+      if (action === "verify") await verifyProof(sale.id, actorUid);
+      else await rejectProof(sale.id, actorUid, reason);
+      setRejecting(false);
+      setReason("");
+      setNotice(
+        action === "verify"
+          ? "Comprobante verificado."
+          : "Comprobante rechazado.",
+      );
+      await load();
+    } catch (cause) {
+      setError(getPaymentProofErrorMessage(cause));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const canEdit =
+    !readOnly &&
+    role === "agent" &&
+    sale.agentId === actorUid &&
+    sale.status === "completed" &&
+    proof?.status !== "verified";
+  const canReview =
+    !readOnly &&
+    role === "admin" &&
+    proof?.status === "provided" &&
+    sale.status === "completed";
+
+  return (
+    <section
+      aria-labelledby="sale-proof-title"
+      className="rounded-2xl border border-slate-200 p-4 sm:p-5"
+    >
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h3 className="font-bold text-slate-950" id="sale-proof-title">
+            Comprobante de pago
+          </h3>
+          <p className="mt-1 text-xs text-slate-500">
+            Metadata auditable y foto privada almacenada en Google Drive.
+          </p>
+        </div>
+        {canEdit ? (
+          <button
+            className="rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white"
+            onClick={() => setFormOpen(true)}
+            type="button"
+          >
+            {proof ? "Corregir comprobante" : "Registrar comprobante"}
+          </button>
+        ) : null}
+      </div>
+
+      {notice ? (
+        <p
+          className="mt-4 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-900"
+          role="status"
+        >
+          {notice}
+        </p>
+      ) : null}
+      {error ? (
+        <p
+          className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-800"
+          role="alert"
+        >
+          {error}
+        </p>
+      ) : null}
+
+      {loading ? (
+        <p className="mt-4 text-sm text-slate-500">Cargando comprobante...</p>
+      ) : !proof ? (
+        <div className="mt-4 rounded-xl bg-amber-50 p-4">
+          <p className="font-semibold text-amber-900">
+            Sin comprobante registrado
+          </p>
+          {sale.paymentMethod !== "cash" ? (
+            <p className="mt-1 text-sm text-amber-800">
+              Pago sin comprobante registrado.
+            </p>
+          ) : null}
+        </div>
+      ) : (
+        <div className="mt-4 space-y-4">
+          <dl className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <dt className="text-xs text-slate-500">Estado</dt>
+              <dd className="mt-1">
+                <span
+                  className={`rounded-full px-2.5 py-1 text-xs font-bold ${STATUS_STYLES[proof.status]}`}
+                >
+                  {PAYMENT_PROOF_STATUS_LABELS[proof.status]}
+                </span>
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs text-slate-500">Tipo</dt>
+              <dd className="mt-1 font-semibold">
+                {PAYMENT_PROOF_TYPE_LABELS[proof.type]}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs text-slate-500">Método / monto</dt>
+              <dd className="mt-1 font-semibold">
+                {PAYMENT_METHOD_LABELS[proof.paymentMethod]} ·{" "}
+                {formatMoney(proof.amount)}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs text-slate-500">Registrado</dt>
+              <dd className="mt-1 font-semibold">{formatDate(proof.createdAt)}</dd>
+            </div>
+          </dl>
+          {proof.operationReference ? (
+            <div>
+              <p className="text-xs font-semibold uppercase text-slate-500">
+                Referencia
+              </p>
+              <p className="mt-1 break-words text-sm">
+                {proof.operationReference}
+              </p>
+            </div>
+          ) : null}
+          {proof.notes ? (
+            <div>
+              <p className="text-xs font-semibold uppercase text-slate-500">
+                Notas
+              </p>
+              <p className="mt-1 whitespace-pre-wrap text-sm">{proof.notes}</p>
+            </div>
+          ) : null}
+          {proof.externalUrl ? (
+            <a
+              className="inline-flex break-all text-sm font-semibold text-blue-700 underline"
+              href={proof.externalUrl}
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              Abrir referencia externa
+            </a>
+          ) : null}
+          {proof.attachment ? (
+            <PaymentProofAttachmentViewer
+              attachment={proof.attachment}
+              saleId={sale.id}
+            />
+          ) : null}
+          {proof.status === "verified" ? (
+            <p className="text-sm text-emerald-800">
+              Verificado el {proof.verifiedAt ? formatDate(proof.verifiedAt) : "—"}.
+              El comprobante y su adjunto quedaron inmutables.
+            </p>
+          ) : null}
+          {proof.status === "rejected" ? (
+            <p className="rounded-xl bg-red-50 p-3 text-sm text-red-800">
+              <strong>Motivo:</strong> {proof.rejectionReason}
+            </p>
+          ) : null}
+          {canReview ? (
+            <div className="flex flex-col gap-2 border-t pt-4 sm:flex-row">
+              <button
+                className="rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+                disabled={busy}
+                onClick={() => void review("verify")}
+                type="button"
+              >
+                Verificar
+              </button>
+              <button
+                className="rounded-xl border border-red-300 px-4 py-2.5 text-sm font-semibold text-red-700 disabled:opacity-60"
+                disabled={busy}
+                onClick={() => setRejecting(true)}
+                type="button"
+              >
+                Rechazar
+              </button>
+            </div>
+          ) : null}
+        </div>
+      )}
+
+      {sale.status === "cancelled" ? (
+        <p className="mt-4 rounded-xl bg-slate-100 p-3 text-sm text-slate-700">
+          La venta está anulada. El comprobante se conserva para auditoría y no
+          admite nuevas acciones.
+        </p>
+      ) : null}
+      {formOpen ? (
+        <PaymentProofFormDialog
+          initial={proof}
+          onClose={() => setFormOpen(false)}
+          onSubmit={save}
+        />
+      ) : null}
+      {rejecting ? (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/60 p-5">
+          <section
+            aria-labelledby="reject-proof-title"
+            aria-modal="true"
+            className="w-full max-w-lg rounded-3xl bg-white p-6"
+            role="dialog"
+          >
+            <h3 className="text-xl font-bold" id="reject-proof-title">
+              Rechazar comprobante
+            </h3>
+            <label
+              className="mt-4 block text-sm font-semibold"
+              htmlFor="proof-rejection-reason"
+            >
+              Motivo obligatorio
+            </label>
+            <textarea
+              className="mt-2 min-h-28 w-full rounded-xl border border-slate-300 p-3 text-sm"
+              id="proof-rejection-reason"
+              maxLength={300}
+              onChange={(event) => setReason(event.target.value)}
+              value={reason}
+            />
+            <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                className="rounded-xl border px-4 py-2.5 text-sm font-semibold"
+                onClick={() => setRejecting(false)}
+                type="button"
+              >
+                Cancelar
+              </button>
+              <button
+                className="rounded-xl bg-red-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+                disabled={busy || !reason.trim()}
+                onClick={() => void review("reject")}
+                type="button"
+              >
+                Confirmar rechazo
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+    </section>
+  );
 }

@@ -25,7 +25,7 @@ export const NAVIGATION_ITEMS: readonly NavigationItem[] = [
   { label: "Comprobantes", shortLabel: "CP", href: "/payment-proofs", roles: ["admin"] },
   { label: "Proveedores", shortLabel: "PV", href: "/suppliers", roles: ["admin"] },
   { label: "Compras", shortLabel: "CO", href: "/purchases", roles: ["admin"] },
-  { label: "Reportes", shortLabel: "RP", href: "/reports", roles: ["admin"] },
+  { label: "Reportes", shortLabel: "RP", href: "/reports", roles: ALL_ROLES },
 ];
 
 export function getNavigationForRole(role: UserRole): NavigationItem[] {
