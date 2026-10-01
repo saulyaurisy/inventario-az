@@ -16,10 +16,14 @@ import {
   findDriveFileByUploadId,
   getDriveFileMetadata,
   getDriveFolderId,
+  readDriveFilePrefix,
   type DriveFileMetadata,
 } from "@/lib/google-drive/google-drive.server";
 
-import type { PaymentProofAttachment } from "../types/payment-proof.types";
+import type {
+  PaymentProofAttachment,
+  PaymentProofStatus,
+} from "../types/payment-proof.types";
 
 export const MAX_PAYMENT_PROOF_FILE_SIZE = 5 * 1024 * 1024;
 export const PAYMENT_PROOF_MIME_TYPES = [
@@ -236,11 +240,11 @@ function detectImageMimeType(bytes: Uint8Array): AllowedMimeType | null {
 }
 
 async function verifyDriveFileContent(file: DriveFileMetadata, expectedMimeType: AllowedMimeType): Promise<void> {
-  const response = await downloadDriveFile(file.id);
-  const bytes = new Uint8Array(await response.arrayBuffer());
-  if (bytes.length === 0 || bytes.length > MAX_PAYMENT_PROOF_FILE_SIZE || bytes.length !== Number(file.size)) {
+  const size = Number(file.size);
+  if (!Number.isInteger(size) || size <= 0 || size > MAX_PAYMENT_PROOF_FILE_SIZE) {
     throw new PaymentProofAttachmentError("El tamaño real del archivo no es válido.", 400);
   }
+  const bytes = await readDriveFilePrefix(file.id, 12);
   if (detectImageMimeType(bytes) !== expectedMimeType) {
     throw new PaymentProofAttachmentError("El contenido real del archivo no coincide con su formato.", 400);
   }
@@ -353,7 +357,7 @@ export async function confirmPaymentProofUpload(actor: BackendActor, uploadIdVal
   }
 }
 
-export async function getAuthorizedAttachment(actor: BackendActor, saleId: string) {
+export async function getAuthorizedAttachmentInfo(actor: BackendActor, saleId: string) {
   const db = getFirebaseAdminDb();
   const [saleDocument, proofDocument] = await Promise.all([
     db.doc(`sales/${saleId}`).get(),
@@ -371,7 +375,18 @@ export async function getAuthorizedAttachment(actor: BackendActor, saleId: strin
   if (!attachment || attachment.provider !== "google_drive") {
     throw new PaymentProofAttachmentError("El comprobante no tiene una imagen adjunta.", 404);
   }
-  const file = await getDriveFileMetadata(attachment.fileId);
+  const status = proof.status as PaymentProofStatus;
+  if (!["provided", "verified", "rejected"].includes(status)) {
+    throw new PaymentProofAttachmentError("El estado del comprobante no es válido.", 409);
+  }
+  return { attachment, status };
+}
+
+export async function openAuthorizedAttachment(saleId: string, attachment: PaymentProofAttachment) {
+  const [file, response] = await Promise.all([
+    getDriveFileMetadata(attachment.fileId),
+    downloadDriveFile(attachment.fileId),
+  ]);
   if (
     file.trashed === true ||
     file.name !== attachment.fileName ||
@@ -381,7 +396,8 @@ export async function getAuthorizedAttachment(actor: BackendActor, saleId: strin
     file.appProperties?.saleId !== saleId ||
     file.appProperties?.uploadedBy !== attachment.uploadedBy
   ) {
+    await response.body?.cancel().catch(() => undefined);
     throw new PaymentProofAttachmentError("El archivo almacenado no superó la validación de seguridad.", 409);
   }
-  return { attachment, response: await downloadDriveFile(file.id) };
+  return response;
 }

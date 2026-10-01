@@ -13,7 +13,10 @@ import {
   rejectProof,
   verifyProof,
 } from "../services/payment-proofs.service";
-import { uploadPaymentProofAttachment } from "../services/payment-proof-attachment.service";
+import {
+  type PaymentProofUploadProgress,
+  uploadPaymentProofAttachment,
+} from "../services/payment-proof-attachment.service";
 import type {
   PaymentProofInput,
   SalePaymentProof,
@@ -91,7 +94,7 @@ export function SalePaymentProofSection({
   async function save(
     input: PaymentProofInput,
     file: File | null,
-    onProgress: (percentage: number) => void,
+    onProgress: (progress: PaymentProofUploadProgress) => void,
   ) {
     try {
       await createOrUpdateProof(sale.id, input, actorUid);

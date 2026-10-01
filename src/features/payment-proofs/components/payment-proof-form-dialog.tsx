@@ -1,9 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   PAYMENT_PROOF_ACCEPT,
+  optimizePaymentProofFile,
+  type OptimizedPaymentProofFile,
+  type PaymentProofUploadProgress,
   validatePaymentProofFile,
 } from "../services/payment-proof-attachment.service";
 import type {
@@ -19,7 +22,7 @@ interface PaymentProofFormDialogProps {
   onSubmit: (
     input: PaymentProofInput,
     file: File | null,
-    onProgress: (percentage: number) => void,
+    onProgress: (progress: PaymentProofUploadProgress) => void,
   ) => Promise<void>;
 }
 
@@ -33,16 +36,19 @@ export function PaymentProofFormDialog({ initial, onClose, onSubmit }: PaymentPr
   const [operationReference, setOperationReference] = useState(initial?.operationReference ?? "");
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [file, setFile] = useState<File | null>(null);
+  const [fileOptimization, setFileOptimization] = useState<OptimizedPaymentProofFile | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [progress, setProgress] = useState<number | null>(null);
+  const [progress, setProgress] = useState<PaymentProofUploadProgress | null>(null);
+  const [optimizing, setOptimizing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const selectionVersion = useRef(0);
 
   useEffect(() => () => {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
   }, [previewUrl]);
 
-  function selectFile(event: React.ChangeEvent<HTMLInputElement>) {
+  async function selectFile(event: React.ChangeEvent<HTMLInputElement>) {
     const selected = event.target.files?.[0] ?? null;
     event.target.value = "";
     setError(null);
@@ -50,17 +56,35 @@ export function PaymentProofFormDialog({ initial, onClose, onSubmit }: PaymentPr
     const validationError = validatePaymentProofFile(selected);
     if (validationError) {
       setFile(null);
+      setFileOptimization(null);
       setPreviewUrl(null);
       setError(validationError);
       return;
     }
     setFile(selected);
+    setFileOptimization({
+      file: selected,
+      originalSize: selected.size,
+      optimizedSize: selected.size,
+      optimized: false,
+    });
     setPreviewUrl(URL.createObjectURL(selected));
+    const currentVersion = ++selectionVersion.current;
+    setOptimizing(true);
+    const optimized = await optimizePaymentProofFile(selected);
+    if (selectionVersion.current !== currentVersion) return;
+    setFile(optimized.file);
+    setFileOptimization(optimized);
+    if (optimized.optimized) setPreviewUrl(URL.createObjectURL(optimized.file));
+    setOptimizing(false);
   }
 
   function removeFile() {
+    selectionVersion.current += 1;
     setFile(null);
+    setFileOptimization(null);
     setPreviewUrl(null);
+    setOptimizing(false);
   }
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
@@ -74,7 +98,7 @@ export function PaymentProofFormDialog({ initial, onClose, onSubmit }: PaymentPr
       }
     }
     setSaving(true);
-    setProgress(file ? 0 : null);
+    setProgress(file ? { stage: "preparing", percentage: 0 } : null);
     try {
       await onSubmit({
         type,
@@ -104,19 +128,19 @@ export function PaymentProofFormDialog({ initial, onClose, onSubmit }: PaymentPr
             <div><p className="text-sm font-semibold text-slate-900">Foto del comprobante</p><p className="mt-1 text-xs text-slate-500">JPG, PNG o WEBP · máximo 5 MB</p></div>
             <label className="cursor-pointer rounded-xl border border-emerald-300 px-4 py-2.5 text-center text-sm font-semibold text-emerald-800">
               Seleccionar comprobante
-              <input accept={PAYMENT_PROOF_ACCEPT} className="sr-only" disabled={saving} onChange={selectFile} type="file" />
+              <input accept={PAYMENT_PROOF_ACCEPT} className="sr-only" disabled={saving || optimizing} onChange={(event) => void selectFile(event)} type="file" />
             </label>
           </div>
           {file ? <div className="mt-4 space-y-3 rounded-xl bg-slate-50 p-3">
             {/* eslint-disable-next-line @next/next/no-img-element -- local blob preview */}
             {previewUrl ? <img alt="Previsualización del comprobante seleccionado" className="max-h-64 w-full rounded-lg object-contain" src={previewUrl} /> : null}
-            <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-sm font-semibold">{file.name}</p><p className="text-xs text-slate-500">{formatFileSize(file.size)}</p></div><button className="text-sm font-semibold text-red-700" disabled={saving} onClick={removeFile} type="button">Quitar</button></div>
+            <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-sm font-semibold">{file.name}</p><p className="text-xs text-slate-500">{optimizing ? "Optimizando imagen…" : fileOptimization?.optimized ? `${formatFileSize(fileOptimization.originalSize)} → ${formatFileSize(fileOptimization.optimizedSize)}` : formatFileSize(file.size)}</p>{fileOptimization?.optimized && !optimizing ? <p className="mt-1 text-xs font-medium text-emerald-700">Optimizada para una subida más rápida</p> : null}</div><button className="text-sm font-semibold text-red-700" disabled={saving} onClick={removeFile} type="button">Quitar</button></div>
           </div> : initial?.attachment ? <p className="mt-4 text-xs text-slate-600">Se conservará el archivo actual: <strong>{initial.attachment.fileName}</strong>. Selecciona otra imagen solo si deseas reemplazarlo.</p> : null}
-          {progress !== null ? <div className="mt-4"><div className="mb-1 flex justify-between text-xs font-semibold text-slate-600"><span>Subiendo...</span><span>{progress}%</span></div><div className="h-2 overflow-hidden rounded-full bg-slate-200"><div className="h-full bg-emerald-600 transition-all" style={{ width: `${progress}%` }} /></div></div> : null}
+          {progress !== null ? <div className="mt-4" aria-live="polite"><div className="mb-1 flex justify-between text-xs font-semibold text-slate-600"><span>{{ preparing: "Preparando…", uploading: "Subiendo…", confirming: "Confirmando…", complete: "Listo" }[progress.stage]}</span><span>{progress.percentage}%</span></div><div className="h-2 overflow-hidden rounded-full bg-slate-200"><div className="h-full bg-emerald-600 transition-all" style={{ width: `${progress.percentage}%` }} /></div></div> : null}
         </div>
 
         {error ? <p className="rounded-xl bg-red-50 p-3 text-sm text-red-800" role="alert">{error}</p> : null}
-        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button className="rounded-xl border px-5 py-3 text-sm font-semibold" disabled={saving} onClick={onClose} type="button">Cancelar</button><button className="rounded-xl bg-emerald-700 px-5 py-3 text-sm font-semibold text-white disabled:opacity-60" disabled={saving} type="submit">{saving ? (file ? "Subiendo..." : "Guardando...") : "Guardar comprobante"}</button></div>
+        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button className="rounded-xl border px-5 py-3 text-sm font-semibold" disabled={saving} onClick={onClose} type="button">Cancelar</button><button className="rounded-xl bg-emerald-700 px-5 py-3 text-sm font-semibold text-white disabled:opacity-60" disabled={saving || optimizing} type="submit">{optimizing ? "Preparando imagen…" : saving ? (file ? "Subiendo..." : "Guardando...") : "Guardar comprobante"}</button></div>
       </form>
     </section>
   </div>;

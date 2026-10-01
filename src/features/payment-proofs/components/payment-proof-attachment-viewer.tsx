@@ -30,7 +30,7 @@ export function PaymentProofAttachmentViewer({
     setLoading(true);
     setError(null);
     try {
-      const nextUrl = URL.createObjectURL(await fetchPaymentProofAttachment(saleId));
+      const nextUrl = URL.createObjectURL(await fetchPaymentProofAttachment(saleId, attachment));
       setObjectUrl((current) => {
         if (current) URL.revokeObjectURL(current);
         return nextUrl;

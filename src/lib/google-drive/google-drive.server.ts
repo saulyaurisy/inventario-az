@@ -131,6 +131,16 @@ export async function downloadDriveFile(fileId: string): Promise<Response> {
   return response;
 }
 
+export async function readDriveFilePrefix(fileId: string, byteLength: number): Promise<Uint8Array> {
+  const response = await authorizedDriveFetch(
+    `${DRIVE_API_BASE}/files/${encodeURIComponent(fileId)}?alt=media`,
+    { headers: { Range: `bytes=0-${Math.max(0, byteLength - 1)}` } },
+  );
+  if (response.status !== 206) throw new Error("Google Drive did not honor the content range");
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  return bytes.slice(0, byteLength);
+}
+
 export async function deleteDriveFile(fileId: string): Promise<void> {
   const response = await authorizedDriveFetch(
     `${DRIVE_API_BASE}/files/${encodeURIComponent(fileId)}`,
