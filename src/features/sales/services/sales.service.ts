@@ -531,10 +531,13 @@ export async function createSale(
 export async function listSales(
   role: UserRole,
   actorUid: string,
+  agentId?: string,
 ): Promise<Sale[]> {
   const ref = collection(getFirebaseDb(), "sales");
-  const salesQuery =
-    role === "admin" ? query(ref) : query(ref, where("agentId", "==", actorUid));
+  const scopedAgentId = role === "admin" ? agentId : actorUid;
+  const salesQuery = scopedAgentId
+    ? query(ref, where("agentId", "==", scopedAgentId))
+    : query(ref);
   const snapshot = await getDocs(salesQuery);
   return snapshot.docs
     .map(parseSale)

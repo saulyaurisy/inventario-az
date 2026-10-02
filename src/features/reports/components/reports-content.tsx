@@ -29,11 +29,13 @@ import type {
   SalesReportRow,
 } from "../types/report.types";
 import { formatReportPeriod, REPORT_PERIOD_OPTIONS } from "../utils/report-utils";
+import { DailyProductReportView } from "./daily-product-report";
 
 const INTEGER = new Intl.NumberFormat("es-PE");
 const DATE = new Intl.DateTimeFormat("es-PE", { dateStyle: "short", timeStyle: "short" });
 const REPORT_TABS: Array<{ id: ReportTab; label: string; adminOnly?: boolean }> = [
   { id: "sales", label: "Ventas" },
+  { id: "dailyProducts", label: "Diario por producto" },
   { id: "products", label: "Productos" },
   { id: "clients", label: "Clientes" },
   { id: "payments", label: "Pagos" },
@@ -318,6 +320,7 @@ function exportSalesDetail(data: ReportsData) {
 }
 
 function hasTabData(tab: ReportTab, data: ReportsData): boolean {
+  if (tab === "dailyProducts") return false;
   if (tab === "sales") return data.sales.rows.length > 0;
   if (tab === "products") return data.products.length > 0;
   if (tab === "clients") return data.clients.length > 0;
@@ -383,9 +386,9 @@ export function ReportsContent() {
 
   return (
     <section aria-label="Reportes" className="reports-page space-y-5">
-      <PageHeader context={data ? `${profile.role === "admin" ? "Vista global" : "Vista personal"} · ${formatReportPeriod(data.period)}` : profile.role === "admin" ? "Vista global" : "Vista personal"} description="Consulta información histórica y exporta únicamente los datos autorizados para tu rol." title="Reportes" />
+      <PageHeader context={activeTab === "dailyProducts" ? `${profile.role === "admin" ? "Vista global" : "Vista personal"} · Matriz mensual` : data ? `${profile.role === "admin" ? "Vista global" : "Vista personal"} · ${formatReportPeriod(data.period)}` : profile.role === "admin" ? "Vista global" : "Vista personal"} description="Consulta información histórica y exporta únicamente los datos autorizados para tu rol." title="Reportes" />
 
-      <SectionCard className="reports-controls" title="Período y acciones" titleId="reports-filters-title">
+      {activeTab !== "dailyProducts" ? <SectionCard className="reports-controls" title="Período y acciones" titleId="reports-filters-title">
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(12rem,1fr)_minmax(10rem,0.75fr)_minmax(10rem,0.75fr)_auto] xl:items-end">
           <label className="text-sm font-semibold text-slate-700">Período<select className="mt-1.5 w-full" onChange={(event) => setPeriodKey(event.target.value as ReportPeriodKey)} value={periodKey}>{REPORT_PERIOD_OPTIONS.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}</select></label>
           <label className="text-sm font-semibold text-slate-700">Desde<input className="mt-1.5 w-full" disabled={periodKey !== "custom"} onChange={(event) => setStartDate(event.target.value)} type="date" value={startDate} /></label>
@@ -398,14 +401,14 @@ export function ReportsContent() {
           </div>
         </div>
         <p className="mt-3 text-xs text-slate-500">El rango personalizado admite hasta 366 días. Los reportes son consultas puntuales y no crean métricas persistentes.</p>
-      </SectionCard>
+      </SectionCard> : null}
 
       <nav aria-label="Tipos de reporte" className="reports-tabs flex gap-2 overflow-x-auto pb-1" data-print-hide>{tabs.map((tab) => <button aria-current={activeTab === tab.id ? "page" : undefined} className={`shrink-0 rounded-lg px-4 py-2.5 text-sm font-semibold ${activeTab === tab.id ? "bg-slate-950 text-white" : "border border-slate-300 bg-white text-slate-700"}`} key={tab.id} onClick={() => setActiveTab(tab.id)} type="button">{tab.label}</button>)}</nav>
 
       {error ? <div className="rounded-xl border border-red-200 bg-red-50 p-5 text-red-900" role="alert"><p className="font-bold">No se pudo generar el reporte</p><p className="mt-1 text-sm">{error}</p></div> : null}
       {loading && !data ? <div aria-live="polite" className="grid gap-3 sm:grid-cols-3"><div className="h-28 animate-pulse rounded-xl bg-slate-200" /><div className="h-28 animate-pulse rounded-xl bg-slate-200" /><div className="h-28 animate-pulse rounded-xl bg-slate-200" /></div> : null}
 
-      {data ? <div className="reports-print-area"><div className="reports-print-heading hidden"><h1>Reporte de {tabs.find((tab) => tab.id === activeTab)?.label}</h1><p>{formatReportPeriod(data.period)} · Generado {DATE.format(data.generatedAt)}</p></div>{activeTab === "sales" ? <SalesReportView actorUid={user.uid} data={data} /> : activeTab === "products" ? <ProductsReportView data={data} /> : activeTab === "clients" ? <ClientsReportView data={data} /> : activeTab === "payments" ? <PaymentsReportView data={data} /> : activeTab === "inventory" ? <InventoryReportView data={data} /> : activeTab === "replenishments" ? <ReplenishmentsReportView data={data} /> : <PurchasesReportView data={data} />}</div> : null}
+      {data ? <div className="reports-print-area"><div className="reports-print-heading hidden"><h1>Reporte de {tabs.find((tab) => tab.id === activeTab)?.label}</h1><p>{formatReportPeriod(data.period)} · Generado {DATE.format(data.generatedAt)}</p></div>{activeTab === "sales" ? <SalesReportView actorUid={user.uid} data={data} /> : activeTab === "dailyProducts" ? <DailyProductReportView actorDisplayName={profile.displayName} actorUid={user.uid} agents={data.agents} role={profile.role} /> : activeTab === "products" ? <ProductsReportView data={data} /> : activeTab === "clients" ? <ClientsReportView data={data} /> : activeTab === "payments" ? <PaymentsReportView data={data} /> : activeTab === "inventory" ? <InventoryReportView data={data} /> : activeTab === "replenishments" ? <ReplenishmentsReportView data={data} /> : <PurchasesReportView data={data} />}</div> : null}
     </section>
   );
 }

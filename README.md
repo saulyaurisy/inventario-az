@@ -249,6 +249,9 @@ firebase deploy --only auth,firestore:rules
 - En el reporte de ventas, el número abre un detalle de solo lectura que reutiliza los snapshots históricos de productos, precios, descuentos y formas de pago almacenados en cada venta.
 - Ventas ofrece un CSV resumen con la lista compacta de productos y un CSV detalle con una fila por producto vendido. Los demás reportes visibles también pueden exportarse como CSV UTF-8 desde el navegador.
 - La impresión oculta navegación y controles para que el usuario pueda imprimir o guardar como PDF sin generación backend.
+- El tab `Diario por producto` genera bajo demanda una matriz mensual o quincenal desde `sale.items[]`: cada columna representa un día y cada fila conserva el nombre, SKU, cantidades y montos históricos del producto. Permite inspeccionar las ventas de una celda y exportar la matriz como XLSX real, sin crear snapshots ni una colección de reportes.
+- Las filas de la matriz son la unión entre los productos presentes en inventarios accesibles para el rol y los snapshots históricos vendidos dentro del período. Así, un producto operativo sin ventas aparece con ceros y un producto posteriormente inactivo conserva su fila cuando tuvo ventas; la deduplicación usa `productId` y el SKU normalizado como respaldo.
+- Los administradores pueden consultar la matriz global o limitarla a un agente; los agentes consultan exclusivamente ventas asociadas a su UID. Las ventas anuladas quedan excluidas. Un posible flujo administrativo de `Cerrar mes` queda documentado para una issue futura y no forma parte de esta versión dinámica.
 
 ## Ejecución
 

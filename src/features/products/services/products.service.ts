@@ -3,6 +3,7 @@ import {
   collection,
   deleteField,
   doc,
+  documentId,
   getDoc,
   getDocs,
   orderBy,
@@ -11,6 +12,7 @@ import {
   serverTimestamp,
   Timestamp,
   updateDoc,
+  where,
   type DocumentSnapshot,
 } from "firebase/firestore";
 
@@ -114,6 +116,30 @@ export async function listProducts(): Promise<Product[]> {
   );
   const snapshot = await getDocs(productsQuery);
   return snapshot.docs.map(parseProduct);
+}
+
+export async function listProductsByIds(productIds: string[]): Promise<Product[]> {
+  const uniqueIds = [...new Set(productIds.filter(Boolean))];
+  if (uniqueIds.length === 0) return [];
+
+  const batches: string[][] = [];
+  for (let index = 0; index < uniqueIds.length; index += 30) {
+    batches.push(uniqueIds.slice(index, index + 30));
+  }
+  const snapshots = await Promise.all(
+    batches.map((ids) =>
+      getDocs(
+        query(
+          collection(getFirebaseDb(), "products"),
+          where(documentId(), "in", ids),
+        ),
+      ),
+    ),
+  );
+
+  return snapshots
+    .flatMap((snapshot) => snapshot.docs.map(parseProduct))
+    .sort((a, b) => a.name.localeCompare(b.name, "es"));
 }
 
 export async function getProductById(productId: string): Promise<Product> {

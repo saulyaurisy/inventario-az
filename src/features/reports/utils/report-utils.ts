@@ -302,6 +302,7 @@ export function buildReportsData(sources: ReportSources, period: ReportPeriod): 
     ...(item.receivedAt ? { receivedAt: item.receivedAt.toDate() } : {}),
   }));
   return {
+    agents: [],
     role: sources.role,
     period,
     generatedAt: new Date(),

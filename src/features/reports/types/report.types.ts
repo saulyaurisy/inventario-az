@@ -14,6 +14,7 @@ export type ReportPeriodKey =
 
 export type ReportTab =
   | "sales"
+  | "dailyProducts"
   | "products"
   | "clients"
   | "payments"
@@ -157,6 +158,7 @@ export interface PurchaseReport {
 }
 
 export interface ReportsData {
+  agents: Array<{ displayName: string; uid: string }>;
   clients: ClientReportRow[];
   generatedAt: Date;
   inventory: InventoryReportRow[];
@@ -167,4 +169,49 @@ export interface ReportsData {
   replenishments: ReplenishmentReport;
   role: UserRole;
   sales: SalesReport;
+}
+
+export type DailyProductMetric = "units" | "amount";
+export type DailyProductPeriodKey = "month" | "firstHalf" | "secondHalf" | "custom";
+
+export interface DailyProductReportRequest {
+  actorDisplayName: string;
+  actorUid: string;
+  agentId?: string;
+  customEnd?: string;
+  customStart?: string;
+  month: string;
+  periodKey: DailyProductPeriodKey;
+  role: UserRole;
+}
+
+export interface DailyProductContribution {
+  agent: string;
+  item: Sale["items"][number];
+  sale: Sale;
+}
+
+export interface DailyProductCell {
+  amount: number;
+  contributions: DailyProductContribution[];
+  units: number;
+}
+
+export interface DailyProductReportRow {
+  cells: Record<string, DailyProductCell>;
+  name: string;
+  productId: string;
+  sku: string;
+  totalAmount: number;
+  totalUnits: number;
+}
+
+export interface DailyProductReport {
+  dayTotals: Record<string, { amount: number; units: number }>;
+  days: Array<{ date: string; label: string; shortLabel: string }>;
+  end: Date;
+  generatedAt: Date;
+  label: string;
+  rows: DailyProductReportRow[];
+  start: Date;
 }
