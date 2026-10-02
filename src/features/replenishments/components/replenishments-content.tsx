@@ -3,6 +3,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/features/auth";
+import type { InventoryMovement, InventoryRecord } from "@/features/inventory";
+import {
+  listInventory,
+  listInventoryOverviewMovements,
+} from "@/features/inventory/services/inventory.service";
 import type { Product } from "@/features/products";
 import { listProducts } from "@/features/products/services/products.service";
 
@@ -52,6 +57,8 @@ export function ReplenishmentsContent() {
   const [replenishments, setReplenishments] = useState<Replenishment[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [users, setUsers] = useState<ReplenishmentUser[]>([]);
+  const [inventory, setInventory] = useState<InventoryRecord[]>([]);
+  const [inventoryMovements, setInventoryMovements] = useState<InventoryMovement[]>([]);
   const [filters, setFilters] = useState(INITIAL_FILTERS);
   const [formTarget, setFormTarget] = useState<Replenishment | "new" | null>(null);
   const [detailTarget, setDetailTarget] = useState<Replenishment | null>(null);
@@ -70,14 +77,18 @@ export function ReplenishmentsContent() {
     setLoading(true);
     setError(null);
     try {
-      const [nextReplenishments, nextProducts, nextUsers] = await Promise.all([
+      const [nextReplenishments, nextProducts, nextUsers, nextInventory, nextMovements] = await Promise.all([
         listReplenishments(profile.role, user.uid),
         listProducts(),
         isAdmin ? listReplenishmentUsers() : Promise.resolve([]),
+        listInventory(profile.role, user.uid),
+        listInventoryOverviewMovements(profile.role, user.uid),
       ]);
       setReplenishments(nextReplenishments);
       setProducts(nextProducts);
       setUsers(nextUsers);
+      setInventory(nextInventory);
+      setInventoryMovements(nextMovements);
     } catch (loadError) {
       setError(getReplenishmentErrorMessage(loadError));
     } finally {
@@ -92,12 +103,16 @@ export function ReplenishmentsContent() {
       listReplenishments(profile.role, user.uid),
       listProducts(),
       profile.role === "admin" ? listReplenishmentUsers() : Promise.resolve([]),
+      listInventory(profile.role, user.uid),
+      listInventoryOverviewMovements(profile.role, user.uid),
     ])
-      .then(([nextReplenishments, nextProducts, nextUsers]) => {
+      .then(([nextReplenishments, nextProducts, nextUsers, nextInventory, nextMovements]) => {
         if (ignore) return;
         setReplenishments(nextReplenishments);
         setProducts(nextProducts);
         setUsers(nextUsers);
+        setInventory(nextInventory);
+        setInventoryMovements(nextMovements);
       })
       .catch((loadError: unknown) => {
         if (!ignore) setError(getReplenishmentErrorMessage(loadError));
@@ -236,7 +251,7 @@ export function ReplenishmentsContent() {
         </div>
       </div>
 
-      {formTarget ? <ReplenishmentFormDialog agents={agents} fixedAgent={!isAdmin && user && profile ? { uid: user.uid, displayName: profile.displayName, email: profile.email, role: "agent", active: true } : undefined} initial={formTarget === "new" ? undefined : formTarget} mode={isAdmin ? "admin" : "agent_request"} onClose={() => setFormTarget(null)} onSubmit={saveReplenishment} products={products} /> : null}
+      {formTarget ? <ReplenishmentFormDialog agents={agents} fixedAgent={!isAdmin && user && profile ? { uid: user.uid, displayName: profile.displayName, email: profile.email, role: "agent", active: true } : undefined} initial={formTarget === "new" ? undefined : formTarget} inventory={inventory} inventoryMovements={inventoryMovements} mode={isAdmin ? "admin" : "agent_request"} onClose={() => setFormTarget(null)} onSubmit={saveReplenishment} products={products} /> : null}
       {detailTarget ? <ReplenishmentDetailDialog actorLabels={userLabels} agentLabel={userLabels.get(detailTarget.agentId) ?? "Agente"} onClose={() => setDetailTarget(null)} products={productMap} replenishment={detailTarget} /> : null}
       {confirmTarget ? <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/60 p-5 backdrop-blur-sm"><section aria-labelledby="replenishment-confirm-title" aria-modal="true" className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl" role="alertdialog"><p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Confirmación requerida</p><h2 className="mt-2 text-2xl font-bold text-slate-950" id="replenishment-confirm-title">{confirmTarget.action === "cancel" ? `Cancelar ${confirmTarget.item.number}` : confirmTarget.action === "send" ? `Enviar ${confirmTarget.item.number}` : `Recibir ${confirmTarget.item.number}`}</h2><p className="mt-3 text-sm leading-6 text-slate-600">{confirmTarget.action === "cancel" ? "La reposición quedará cancelada y no se modificará el stock." : confirmTarget.action === "send" ? "¿Confirmas el envío? Se descontará el stock de la empresa y se generará un movimiento de salida por cada producto. Esta operación no puede repetirse." : "Confirmo que recibí esta reposición. Se aumentará mi stock y se generará un movimiento de entrada por cada producto."}</p><div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button className="rounded-xl border border-slate-300 px-5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50" onClick={() => setConfirmTarget(null)} type="button">Volver</button><button className={confirmTarget.action === "cancel" ? "rounded-xl bg-red-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-red-800" : "rounded-xl bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800"} onClick={() => void performAction(confirmTarget.item, confirmTarget.action)} type="button">{confirmTarget.action === "cancel" ? "Sí, cancelar" : confirmTarget.action === "send" ? "Sí, enviar" : "Sí, confirmar recepción"}</button></div></section></div> : null}
     </section>

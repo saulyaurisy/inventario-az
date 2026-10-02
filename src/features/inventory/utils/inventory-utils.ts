@@ -39,7 +39,8 @@ export function getStockStatus(
 ): InventoryStockStatus {
   if (quantity === null) return "uninitialized";
   if (quantity === 0) return "out";
-  if (quantity <= minimumStock) return "low";
+  if (quantity < minimumStock) return "low";
+  if (quantity === minimumStock) return "reorder";
   return "available";
 }
 
@@ -47,6 +48,7 @@ export const STOCK_STATUS_LABELS: Record<InventoryStockStatus, string> = {
   uninitialized: "Sin inventario inicializado",
   out: "Sin stock",
   low: "Stock bajo",
+  reorder: "Reposición recomendada",
   available: "Disponible",
 };
 
@@ -75,4 +77,33 @@ export function calculateInventoryMovementSummary(
     expectedStock,
     consistent: currentQuantity === null || expectedStock === currentQuantity,
   };
+}
+
+export function getInventoryTargetMetrics(
+  summary: InventoryMovementSummary,
+  currentQuantity: number | null,
+) {
+  if (currentQuantity === null) {
+    return {
+      targetStock: null,
+      difference: null,
+      shortage: null,
+    };
+  }
+
+  const targetStock = summary.initialStock;
+  const difference = targetStock - currentQuantity;
+
+  return {
+    targetStock,
+    difference,
+    shortage: Math.max(difference, 0),
+  };
+}
+
+export function formatInventoryTargetDifference(difference: number | null): string {
+  if (difference === null) return "—";
+  if (difference === 0) return "Completo";
+  if (difference < 0) return `Sobran ${Math.abs(difference)}`;
+  return `${difference} ${difference === 1 ? "unidad" : "unidades"}`;
 }

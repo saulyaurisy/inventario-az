@@ -1,7 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
+import type { InventoryMovement, InventoryRecord } from "@/features/inventory";
+import {
+  calculateInventoryMovementSummary,
+  formatInventoryTargetDifference,
+  getInventoryId,
+  getInventoryTargetMetrics,
+} from "@/features/inventory/utils/inventory-utils";
 import type { Product } from "@/features/products";
 
 import type {
@@ -19,6 +26,8 @@ interface ReplenishmentFormDialogProps {
   agents: ReplenishmentUser[];
   fixedAgent?: ReplenishmentUser;
   initial?: Replenishment;
+  inventory: InventoryRecord[];
+  inventoryMovements: InventoryMovement[];
   mode?: "admin" | "agent_request";
   onClose: () => void;
   onSubmit: (input: ReplenishmentInput) => Promise<void>;
@@ -31,6 +40,8 @@ export function ReplenishmentFormDialog({
   agents,
   fixedAgent,
   initial,
+  inventory,
+  inventoryMovements,
   mode = "admin",
   onClose,
   onSubmit,
@@ -50,6 +61,53 @@ export function ReplenishmentFormDialog({
   );
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const productStockMetrics = useMemo(() => {
+    const metrics = new Map<
+      string,
+      {
+        currentStock: number | null;
+        targetStock: number | null;
+        sold: number;
+        difference: number | null;
+        shortage: number | null;
+      }
+    >();
+    if (!agentId) return metrics;
+
+    const movementMap = new Map<string, InventoryMovement[]>();
+    for (const movement of inventoryMovements) {
+      if (movement.ownerType !== "agent" || movement.ownerId !== agentId) continue;
+      const grouped = movementMap.get(movement.inventoryId) ?? [];
+      grouped.push(movement);
+      movementMap.set(movement.inventoryId, grouped);
+    }
+
+    const inventoryMap = new Map(
+      inventory
+        .filter((record) => record.ownerType === "agent" && record.ownerId === agentId)
+        .map((record) => [record.productId, record]),
+    );
+
+    for (const product of products) {
+      const record = inventoryMap.get(product.id);
+      const inventoryId = getInventoryId("agent", agentId, product.id);
+      const summary = calculateInventoryMovementSummary(
+        movementMap.get(inventoryId) ?? [],
+        record?.quantity ?? null,
+      );
+      const target = getInventoryTargetMetrics(summary, record?.quantity ?? null);
+      metrics.set(product.id, {
+        currentStock: record?.quantity ?? null,
+        targetStock: target.targetStock,
+        sold: summary.sold,
+        difference: target.difference,
+        shortage: target.shortage,
+      });
+    }
+
+    return metrics;
+  }, [agentId, inventory, inventoryMovements, products]);
 
   function updateItem(index: number, changes: Partial<DraftItem>) {
     setItems((current) =>
@@ -103,13 +161,25 @@ export function ReplenishmentFormDialog({
 
           <fieldset className="space-y-3">
             <div className="flex items-center justify-between gap-3"><legend className="text-sm font-semibold text-slate-800">Productos *</legend><span className="text-xs text-slate-500">Máximo {MAX_REPLENISHMENT_ITEMS}</span></div>
-            {items.map((item, index) => (
+            {items.map((item, index) => {
+              const metrics = productStockMetrics.get(item.productId);
+              return (
               <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-[1fr_9rem_auto] sm:items-end" key={index}>
                 <div><label className="text-xs font-semibold text-slate-700" htmlFor={`replenishment-product-${index}`}>Producto {index + 1}</label><select className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100" id={`replenishment-product-${index}`} onChange={(event) => updateItem(index, { productId: event.target.value })} value={item.productId}><option value="">Selecciona un producto</option>{products.filter((product) => product.active).map((product) => <option key={product.id} value={product.id}>{product.sku} · {product.name}</option>)}</select></div>
                 <div><label className="text-xs font-semibold text-slate-700" htmlFor={`replenishment-quantity-${index}`}>Cantidad</label><input className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100" id={`replenishment-quantity-${index}`} inputMode="numeric" min="1" onChange={(event) => updateItem(index, { quantity: event.target.value })} step="1" type="number" value={item.quantity} /></div>
                 <button className="rounded-xl border border-red-200 px-3 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-600 disabled:opacity-40" disabled={items.length === 1} onClick={() => removeItem(index)} type="button">Eliminar</button>
+                {item.productId ? (
+                  <dl className="grid grid-cols-2 gap-2 border-t border-slate-200 pt-3 text-xs sm:col-span-3 sm:grid-cols-5">
+                    <div><dt className="text-slate-500">Stock actual</dt><dd className="mt-1 font-bold text-slate-950">{metrics?.currentStock ?? "—"}</dd></div>
+                    <div><dt className="text-slate-500">Stock objetivo</dt><dd className="mt-1 font-bold text-violet-800">{metrics?.targetStock ?? "—"}</dd></div>
+                    <div><dt className="text-slate-500">Vendidos</dt><dd className="mt-1 font-bold text-blue-700">{metrics ? metrics.sold : "—"}</dd></div>
+                    <div><dt className="text-slate-500">Para completar</dt><dd className="mt-1 font-bold text-slate-800">{formatInventoryTargetDifference(metrics?.difference ?? null)}</dd></div>
+                    <div><dt className="text-slate-500">Cantidad sugerida</dt><dd className="mt-1 font-bold text-emerald-800">{metrics?.shortage ?? "—"}</dd></div>
+                  </dl>
+                ) : null}
               </div>
-            ))}
+              );
+            })}
             <button className="rounded-xl border border-dashed border-emerald-400 px-4 py-2.5 text-sm font-semibold text-emerald-800 hover:bg-emerald-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 disabled:opacity-40" disabled={items.length >= MAX_REPLENISHMENT_ITEMS} onClick={() => setItems((current) => [...current, { productId: "", quantity: "" }])} type="button">Agregar producto</button>
           </fieldset>
 

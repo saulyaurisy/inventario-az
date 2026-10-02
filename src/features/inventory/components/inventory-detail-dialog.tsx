@@ -1,12 +1,17 @@
 "use client";
 
 import type { InventoryStockStatus, InventoryViewRow } from "../types/inventory.types";
-import { STOCK_STATUS_LABELS } from "../utils/inventory-utils";
+import {
+  formatInventoryTargetDifference,
+  getInventoryTargetMetrics,
+  STOCK_STATUS_LABELS,
+} from "../utils/inventory-utils";
 
 const STATUS_CLASSES: Record<InventoryStockStatus, string> = {
   uninitialized: "bg-slate-200 text-slate-700",
   out: "bg-red-100 text-red-800",
   low: "bg-amber-100 text-amber-800",
+  reorder: "bg-amber-50 text-amber-800 ring-1 ring-inset ring-amber-200",
   available: "bg-emerald-100 text-emerald-800",
 };
 
@@ -21,6 +26,10 @@ export function InventoryDetailDialog({
   onViewMovements,
   row,
 }: InventoryDetailDialogProps) {
+  const targetMetrics = getInventoryTargetMetrics(
+    row.movementSummary,
+    row.inventory?.quantity ?? null,
+  );
   const updatedAt = row.inventory
     ? new Intl.DateTimeFormat("es-PE", {
         dateStyle: "medium",
@@ -87,6 +96,16 @@ export function InventoryDetailDialog({
             <div className="rounded-xl border border-slate-300 bg-slate-950 p-3 text-white">
               <dt className="text-xs text-slate-300">Stock actual</dt>
               <dd className="mt-1 text-xl font-bold">{row.inventory?.quantity ?? "—"}</dd>
+            </div>
+            <div className="rounded-xl border border-violet-200 bg-violet-50/60 p-3">
+              <dt className="text-xs text-violet-700">Stock objetivo</dt>
+              <dd className="mt-1 font-bold text-violet-900">{targetMetrics.targetStock ?? "—"}</dd>
+            </div>
+            <div className="rounded-xl border border-slate-200 p-3">
+              <dt className="text-xs text-slate-500">Para completar</dt>
+              <dd className="mt-1 font-bold text-slate-950">
+                {formatInventoryTargetDifference(targetMetrics.difference)}
+              </dd>
             </div>
             <div className="rounded-xl border border-slate-200 p-3">
               <dt className="text-xs text-slate-500">Stock mínimo</dt>

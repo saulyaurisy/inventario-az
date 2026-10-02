@@ -218,12 +218,12 @@ const INVENTORY_COLUMNS: ReportColumn<InventoryReportRow>[] = [
   { key: "exits", label: "Otras salidas", align: "right", render: (row) => row.otherExits, csv: (row) => row.otherExits },
   { key: "current", label: "Stock actual", align: "right", render: (row) => <strong>{row.currentStock}</strong>, csv: (row) => row.currentStock },
   { key: "minimum", label: "Stock mínimo", align: "right", render: (row) => row.minimumStock, csv: (row) => row.minimumStock },
-  { key: "status", label: "Estado", render: (row) => <StatusBadge tone={row.status === "available" ? "success" : row.status === "low" ? "warning" : row.status === "out" ? "danger" : "neutral"}>{STOCK_STATUS_LABELS[row.status]}</StatusBadge>, csv: (row) => STOCK_STATUS_LABELS[row.status] },
+  { key: "status", label: "Estado", render: (row) => <StatusBadge tone={row.status === "available" ? "success" : row.status === "low" || row.status === "reorder" ? "warning" : row.status === "out" ? "danger" : "neutral"}>{STOCK_STATUS_LABELS[row.status]}</StatusBadge>, csv: (row) => STOCK_STATUS_LABELS[row.status] },
 ];
 
 function InventoryReportView({ data }: { data: ReportsData }) {
   const total = data.inventory.reduce((sum, row) => sum + row.currentStock, 0);
-  return <div className="space-y-5"><div className="grid gap-3 sm:grid-cols-3"><StatCard label="Registros" symbol="IN" value={data.inventory.length} /><StatCard label="Stock actual" symbol="UN" value={INTEGER.format(total)} tone="brand" /><StatCard label="Alertas de stock" symbol="AL" value={data.inventory.filter((row) => row.status === "low" || row.status === "out").length} tone="amber" /></div><SectionCard description="Snapshot actual; el stock proviene directamente de inventory.quantity" title="Inventario por propietario" titleId="report-inventory-table"><ReportTable columns={INVENTORY_COLUMNS} empty="No hay inventario visible para este usuario." rows={data.inventory} /></SectionCard></div>;
+  return <div className="space-y-5"><div className="grid gap-3 sm:grid-cols-3"><StatCard label="Registros" symbol="IN" value={data.inventory.length} /><StatCard label="Stock actual" symbol="UN" value={INTEGER.format(total)} tone="brand" /><StatCard label="Alertas de stock" symbol="AL" value={data.inventory.filter((row) => row.status === "reorder" || row.status === "low" || row.status === "out").length} tone="amber" /></div><SectionCard description="Snapshot actual; el stock proviene directamente de inventory.quantity" title="Inventario por propietario" titleId="report-inventory-table"><ReportTable columns={INVENTORY_COLUMNS} empty="No hay inventario visible para este usuario." rows={data.inventory} /></SectionCard></div>;
 }
 
 const REPLENISHMENT_COLUMNS: ReportColumn<ReplenishmentReportRow>[] = [

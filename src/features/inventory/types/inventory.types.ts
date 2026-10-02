@@ -16,6 +16,7 @@ export type InventoryStockStatus =
   | "uninitialized"
   | "out"
   | "low"
+  | "reorder"
   | "available";
 
 export interface InventoryRecord {
