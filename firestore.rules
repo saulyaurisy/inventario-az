@@ -187,7 +187,8 @@ service cloud.firestore {
           'replenishment_out', 'replenishment_in', 'sale', 'purchase_in'
         ]
         && data.quantity is int
-        && data.quantity > 0
+        && data.quantity >= 0
+        && (data.type == 'initial' || data.quantity > 0)
         && data.quantityBefore is int
         && data.quantityBefore >= 0
         && data.quantityAfter is int
@@ -1256,8 +1257,8 @@ service cloud.firestore {
               request.resource.data
             )
           || isAdmin()
-            && exists(/databases/$(database)/documents/products/$(request.resource.data.productId))
-            && get(/databases/$(database)/documents/products/$(request.resource.data.productId)).data.active == true
+            && existsAfter(/databases/$(database)/documents/products/$(request.resource.data.productId))
+            && getAfter(/databases/$(database)/documents/products/$(request.resource.data.productId)).data.active == true
             && validInventoryOwner(request.resource.data)
             && validInitialMovement(inventoryId, request.resource.data)
           || validReplenishmentInventoryIn(

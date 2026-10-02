@@ -27,6 +27,7 @@ import {
   STOCK_STATUS_LABELS,
 } from "../utils/inventory-utils";
 import { InventoryDetailDialog } from "./inventory-detail-dialog";
+import { InventoryImportDialog } from "./inventory-import-dialog";
 import { InventoryMovementsDialog } from "./inventory-movements-dialog";
 import { InventoryOperationDialog } from "./inventory-operation-dialog";
 
@@ -87,6 +88,7 @@ export function InventoryContent() {
   const [operation, setOperation] = useState<{ mode: "initial" | "adjust"; row: InventoryViewRow } | null>(null);
   const [detailRow, setDetailRow] = useState<InventoryViewRow | null>(null);
   const [historyRow, setHistoryRow] = useState<InventoryViewRow | null>(null);
+  const [showImport, setShowImport] = useState(false);
   const [movements, setMovements] = useState<InventoryMovement[]>([]);
   const isAdmin = profile?.role === "admin";
 
@@ -265,10 +267,17 @@ export function InventoryContent() {
   return (
     <section aria-labelledby="inventory-title">
       <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-100 bg-gradient-to-br from-white to-emerald-50/70 p-6 sm:p-8">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Existencias por propietario</p>
-          <h2 className="mt-2 text-3xl font-bold tracking-tight text-slate-950" id="inventory-title">Inventario</h2>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Cada cambio de stock se registra mediante una operación controlada y un movimiento inmutable.</p>
+        <div className="flex flex-col gap-5 border-b border-slate-100 bg-gradient-to-br from-white to-emerald-50/70 p-6 sm:flex-row sm:items-end sm:justify-between sm:p-8">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Existencias por propietario</p>
+            <h2 className="mt-2 text-3xl font-bold tracking-tight text-slate-950" id="inventory-title">Inventario</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Cada cambio de stock se registra mediante una operación controlada y un movimiento inmutable.</p>
+          </div>
+          {isAdmin && user ? (
+            <button className="inline-flex shrink-0 items-center justify-center rounded-xl bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2" onClick={() => setShowImport(true)} type="button">
+              Importar inventario
+            </button>
+          ) : null}
         </div>
 
         <div className="space-y-6 p-5 sm:p-8">
@@ -297,6 +306,7 @@ export function InventoryContent() {
       {operation ? <InventoryOperationDialog key={`${operation.mode}-${operation.row.id}`} mode={operation.mode} onClose={() => setOperation(null)} onSubmit={handleOperation} row={operation.row} /> : null}
       {detailRow ? <InventoryDetailDialog onClose={() => setDetailRow(null)} onViewMovements={() => { const row = detailRow; setDetailRow(null); openHistory(row); }} row={detailRow} /> : null}
       {historyRow ? <InventoryMovementsDialog actorLabels={actorLabels} error={null} loading={false} movements={movements} onClose={() => setHistoryRow(null)} row={historyRow} /> : null}
+      {showImport && isAdmin && user ? <InventoryImportDialog actorUid={user.uid} inventory={records} onClose={() => setShowImport(false)} onImported={loadData} products={products} /> : null}
     </section>
   );
 }

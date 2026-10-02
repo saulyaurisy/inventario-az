@@ -168,8 +168,12 @@ firebase deploy --only auth,firestore:rules
 - La vista de inventario agrega, de forma informativa, stock inicial, entradas, vendido y otras salidas directamente desde `inventory_movements`. `inventory.quantity` continúa siendo la única fuente de verdad del stock actual y cualquier diferencia histórica se señala sin modificar datos.
 - El administrador consulta el historial global; el agente solicita desde Firestore únicamente movimientos con `ownerType = agent` y su propio `ownerId`. La carga agrupada evita una consulta por cada fila y el historial detallado reutiliza el diálogo de movimientos existente.
 - La inicialización exige un producto activo y, para stock de agente, un perfil activo con rol `agent`. Los ajustes posteriores permiten correcciones históricas aunque el producto se desactive.
-- Las salidas nunca pueden dejar cantidad negativa y todas las cantidades se manejan como enteros positivos.
+- Las salidas nunca pueden dejar cantidad negativa. Los ajustes usan cantidades enteras positivas; la inicialización admite cero para representar un inventario conocido sin existencias.
 - Los movimientos recientes también alimentan el módulo Kardex; no se implementan ventas, compras, devoluciones ni transferencias entre agentes.
+- El administrador puede importar inventario de empresa desde XLSX, XLS o CSV, con un máximo de 200 filas. La plantilla mínima usa `SKU`, `Producto`, `Stock inicial` y `Stock mínimo`; opcionalmente admite `Descripción`, `Precio`, `Estado` y `Propietario` (solo Empresa).
+- La vista previa normaliza el SKU con la misma lógica de Productos, detecta duplicados dentro del archivo y no escribe hasta la confirmación. Un SKU nuevo crea producto, reserva `product_skus`, inventario y movimiento `initial` en una transacción; usa categoría `Importado`, costo cero y el precio opcional del archivo.
+- Para un inventario existente, la acción predeterminada es no cambiar su cantidad. Si el administrador elige ajustar al valor importado, se crea `adjustment_in` o `adjustment_out` por la diferencia; un valor igual no genera movimiento. El stock mínimo se actualiza en `products`, donde vive el dato, sin duplicarlo en `inventory`.
+- Cada fila se procesa en una transacción independiente para conservar la atomicidad entre cantidad y movimiento sin exceder límites de Firestore. El resultado identifica las filas exitosas o fallidas; agentes y usuarios anónimos permanecen bloqueados por reglas, además de no ver la acción en la interfaz.
 
 ## Kardex
 
