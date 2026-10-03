@@ -229,6 +229,15 @@ export function InventoryContent() {
     return labels;
   }, [agents, profile, user]);
 
+  const operationCompanyQuantity = useMemo(() => {
+    if (!operation) return 0;
+    return records.find(
+      (record) =>
+        record.ownerType === "company" &&
+        record.productId === operation.row.product.id,
+    )?.quantity ?? 0;
+  }, [operation, records]);
+
   async function handleOperation(data: { direction: "in" | "out"; quantity: number; reason: string }) {
     if (!operation || !user) return;
     try {
@@ -312,7 +321,7 @@ export function InventoryContent() {
         </div>
       </div>
 
-      {operation ? <InventoryOperationDialog key={`${operation.mode}-${operation.row.id}`} mode={operation.mode} onClose={() => setOperation(null)} onSubmit={handleOperation} row={operation.row} /> : null}
+      {operation ? <InventoryOperationDialog companyQuantity={operationCompanyQuantity} key={`${operation.mode}-${operation.row.id}`} mode={operation.mode} onClose={() => setOperation(null)} onSubmit={handleOperation} row={operation.row} /> : null}
       {detailRow ? <InventoryDetailDialog onClose={() => setDetailRow(null)} onViewMovements={() => { const row = detailRow; setDetailRow(null); openHistory(row); }} row={detailRow} /> : null}
       {historyRow ? <InventoryMovementsDialog actorLabels={actorLabels} error={null} loading={false} movements={movements} onClose={() => setHistoryRow(null)} row={historyRow} /> : null}
       {showImport && isAdmin && user ? <InventoryImportDialog actorUid={user.uid} inventory={records} onClose={() => setShowImport(false)} onImported={loadData} products={products} /> : null}

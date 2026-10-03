@@ -8,6 +8,7 @@ import type {
 } from "../types/inventory.types";
 
 interface InventoryOperationDialogProps {
+  companyQuantity: number;
   mode: "initial" | "adjust";
   onClose: () => void;
   onSubmit: (data: {
@@ -19,6 +20,7 @@ interface InventoryOperationDialogProps {
 }
 
 export function InventoryOperationDialog({
+  companyQuantity,
   mode,
   onClose,
   onSubmit,
@@ -119,9 +121,15 @@ export function InventoryOperationDialog({
             {errors.reason ? <p className="mt-1.5 text-xs font-medium text-red-700" id="inventory-reason-error">{errors.reason}</p> : null}
           </div>
 
-          <dl className="grid grid-cols-2 gap-4 rounded-2xl border border-slate-200 p-4 text-sm">
+          <dl className={`grid gap-4 rounded-2xl border border-slate-200 p-4 text-sm ${mode === "initial" && row.ownerType === "agent" ? "grid-cols-1 sm:grid-cols-3" : "grid-cols-2"}`}>
             <div><dt className="text-slate-500">Stock actual</dt><dd className="mt-1 text-lg font-bold text-slate-950">{currentQuantity}</dd></div>
             <div><dt className="text-slate-500">Stock resultante</dt><dd className={resultingQuantity < 0 ? "mt-1 text-lg font-bold text-red-700" : "mt-1 text-lg font-bold text-emerald-700"}>{Number.isFinite(resultingQuantity) ? resultingQuantity : "—"}</dd></div>
+            {mode === "initial" && row.ownerType === "agent" ? (
+              <div>
+                <dt className="text-slate-500">Stock de empresa</dt>
+                <dd className="mt-1 text-lg font-bold text-slate-950">{companyQuantity}</dd>
+              </div>
+            ) : null}
           </dl>
 
           {errors.submit ? <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">{errors.submit}</p> : null}
