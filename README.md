@@ -271,6 +271,32 @@ npm run build
 npm run start
 ```
 
+## Herramientas locales de operación
+
+### Ver qué se borraría
+
+```bash
+npm run reset:data:dry
+```
+
+Este comando solo audita y cuenta los datos operativos de `inventario-az`. No elimina información.
+
+### Limpiar datos operativos
+
+```bash
+npm run reset:data
+```
+
+El reset exige escribir exactamente la confirmación mostrada, crea antes un backup local en `%LOCALAPPDATA%\Temp\inventario-az-backups` y conserva Firebase Authentication, los documentos `users`, sus roles, Rules, índices y configuración. También elimina únicamente los archivos Drive asociados a los comprobantes respaldados y mantiene privada la carpeta raíz.
+
+### Compartir temporalmente
+
+```bash
+npm run share:temp
+```
+
+Ejecuta el build de producción, inicia `next start` en un puerto libre y abre un Cloudflare Quick Tunnel. El hostname `trycloudflare.com` mostrado debe agregarse en Firebase Console > Authentication > Settings > Authorized domains si aún no está autorizado. El enlace solo existe mientras el script permanece abierto y no sustituye un despliegue de producción.
+
 ## Validaciones
 
 Ejecuta el lint:

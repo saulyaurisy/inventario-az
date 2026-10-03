@@ -7,7 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "reset:data:dry": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/reset-operational-data.ps1",
+    "reset:data": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/reset-operational-data.ps1 -Execute",
+    "share:temp": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/share-temporarily.ps1"
   },
   "dependencies": {
     "firebase": "^12.19.0",
