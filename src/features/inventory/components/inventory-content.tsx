@@ -15,6 +15,9 @@ import {
   setInitialStock,
 } from "../services/inventory.service";
 import type {
+  InventoryImportDestination,
+} from "../types/inventory-import.types";
+import type {
   InventoryAgent,
   InventoryMovement,
   InventoryStockStatus,
@@ -276,6 +279,11 @@ export function InventoryContent() {
     );
   }
 
+  async function handleImported(destination: InventoryImportDestination) {
+    setOwnerFilter(`${destination.ownerType}:${destination.ownerId}`);
+    await loadData();
+  }
+
   return (
     <section aria-labelledby="inventory-title">
       <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
@@ -324,7 +332,7 @@ export function InventoryContent() {
       {operation ? <InventoryOperationDialog companyQuantity={operationCompanyQuantity} key={`${operation.mode}-${operation.row.id}`} mode={operation.mode} onClose={() => setOperation(null)} onSubmit={handleOperation} row={operation.row} /> : null}
       {detailRow ? <InventoryDetailDialog onClose={() => setDetailRow(null)} onViewMovements={() => { const row = detailRow; setDetailRow(null); openHistory(row); }} row={detailRow} /> : null}
       {historyRow ? <InventoryMovementsDialog actorLabels={actorLabels} error={null} loading={false} movements={movements} onClose={() => setHistoryRow(null)} row={historyRow} /> : null}
-      {showImport && isAdmin && user ? <InventoryImportDialog actorUid={user.uid} inventory={records} onClose={() => setShowImport(false)} onImported={loadData} products={products} /> : null}
+      {showImport && isAdmin && user ? <InventoryImportDialog actorUid={user.uid} agents={agents} inventory={records} onClose={() => setShowImport(false)} onImported={handleImported} products={products} /> : null}
     </section>
   );
 }

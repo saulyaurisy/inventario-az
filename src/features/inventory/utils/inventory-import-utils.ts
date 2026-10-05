@@ -3,6 +3,7 @@ import { normalizeSku } from "@/features/products/utils/product-validation";
 
 import type { InventoryRecord } from "../types/inventory.types";
 import type {
+  InventoryImportDestination,
   InventoryImportParseResult,
   InventoryImportPreviewRow,
   ParsedInventoryImportRow,
@@ -18,8 +19,7 @@ type HeaderKey =
   | "minimumStock"
   | "description"
   | "salePrice"
-  | "active"
-  | "owner";
+  | "active";
 
 const HEADER_ALIASES: Record<string, HeaderKey> = {
   sku: "sku",
@@ -31,7 +31,6 @@ const HEADER_ALIASES: Record<string, HeaderKey> = {
   descripcion: "description",
   precio: "salePrice",
   estado: "active",
-  propietario: "owner",
 };
 
 function normalizeHeader(value: unknown): string {
@@ -92,13 +91,6 @@ function parseActive(value: unknown, errors: string[]): boolean {
   }
   errors.push("Estado debe ser Activo o Inactivo.");
   return true;
-}
-
-function validateOwner(value: unknown, errors: string[]) {
-  const normalized = normalizeHeader(value);
-  if (normalized && !["empresa", "company"].includes(normalized)) {
-    errors.push("Esta versión solo permite importar inventario de empresa.");
-  }
 }
 
 export async function parseInventoryImportFile(
@@ -181,7 +173,6 @@ export async function parseInventoryImportFile(
         } else if (!/^[A-Z0-9][A-Z0-9._ -]*$/.test(sku)) {
           errors.push("SKU contiene caracteres no permitidos.");
         }
-        validateOwner(valueAt(cells, "owner"), errors);
         const salePrice = parseOptionalPrice(
           valueAt(cells, "salePrice"),
           errors,
@@ -233,15 +224,17 @@ export function buildInventoryImportPreview(
   parsedRows: ParsedInventoryImportRow[],
   products: Product[],
   inventory: InventoryRecord[],
+  destination: InventoryImportDestination,
 ): InventoryImportPreviewRow[] {
   const productsBySku = new Map(
     products.map((product) => [normalizeSku(product.sku), product]),
   );
-  const companyInventoryByProduct = new Map(
+  const ownerInventoryByProduct = new Map(
     inventory
       .filter(
         (record) =>
-          record.ownerType === "company" && record.ownerId === "company",
+          record.ownerType === destination.ownerType &&
+          record.ownerId === destination.ownerId,
       )
       .map((record) => [record.productId, record]),
   );
@@ -249,7 +242,7 @@ export function buildInventoryImportPreview(
   return parsedRows.map((row) => {
     const product = productsBySku.get(row.sku);
     const record = product
-      ? companyInventoryByProduct.get(product.id) ?? null
+      ? ownerInventoryByProduct.get(product.id) ?? null
       : null;
     const errors = [...row.errors];
     const warnings: string[] = [];

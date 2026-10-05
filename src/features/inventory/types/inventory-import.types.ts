@@ -1,5 +1,8 @@
 export type InventoryImportAction = "initialize" | "no_change" | "adjust";
 export type InventoryImportProductState = "new" | "existing";
+export type InventoryImportDestination =
+  | { ownerType: "company"; ownerId: "company" }
+  | { ownerType: "agent"; ownerId: string };
 
 export interface ParsedInventoryImportRow {
   rowNumber: number;

@@ -4,13 +4,17 @@ import { useMemo, useRef, useState } from "react";
 
 import type { Product } from "@/features/products";
 
-import { importInventoryRows } from "../services/inventory-import.service";
+import {
+  getInventoryImportErrorMessage,
+  importInventoryRows,
+} from "../services/inventory-import.service";
 import type {
   InventoryImportAction,
+  InventoryImportDestination,
   InventoryImportPreviewRow,
   InventoryImportSummary,
 } from "../types/inventory-import.types";
-import type { InventoryRecord } from "../types/inventory.types";
+import type { InventoryAgent, InventoryRecord } from "../types/inventory.types";
 import {
   buildInventoryImportPreview,
   downloadInventoryImportTemplate,
@@ -22,9 +26,10 @@ type Step = "file" | "preview" | "confirm" | "result";
 
 interface InventoryImportDialogProps {
   actorUid: string;
+  agents: InventoryAgent[];
   inventory: InventoryRecord[];
   onClose: () => void;
-  onImported: () => Promise<void>;
+  onImported: (destination: InventoryImportDestination) => Promise<void>;
   products: Product[];
 }
 
@@ -60,6 +65,7 @@ function numberOrDash(value: number | null) {
 
 export function InventoryImportDialog({
   actorUid,
+  agents,
   inventory,
   onClose,
   onImported,
@@ -67,13 +73,30 @@ export function InventoryImportDialog({
 }: InventoryImportDialogProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [step, setStep] = useState<Step>("file");
+  const [destinationType, setDestinationType] = useState<"company" | "agent">("company");
+  const [selectedAgentId, setSelectedAgentId] = useState("");
   const [fileName, setFileName] = useState("");
   const [fileErrors, setFileErrors] = useState<string[]>([]);
   const [rows, setRows] = useState<InventoryImportPreviewRow[]>([]);
   const [reading, setReading] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
   const [progress, setProgress] = useState({ completed: 0, total: 0 });
   const [summary, setSummary] = useState<InventoryImportSummary | null>(null);
+  const selectedAgent = agents.find((agent) => agent.uid === selectedAgentId);
+  const destination = useMemo<InventoryImportDestination | null>(() => {
+    if (destinationType === "company") {
+      return { ownerType: "company", ownerId: "company" };
+    }
+    return selectedAgent
+      ? { ownerType: "agent", ownerId: selectedAgent.uid }
+      : null;
+  }, [destinationType, selectedAgent]);
+  const destinationLabel = destinationType === "company"
+    ? "Empresa"
+    : selectedAgent
+      ? `${selectedAgent.displayName} — ${selectedAgent.email}`
+      : "Agente pendiente de selección";
   const currentStepIndex = STEP_LABELS.findIndex((item) => item.key === step);
   const criticalErrorCount = useMemo(
     () => rows.reduce((total, row) => total + row.errors.length, 0),
@@ -85,18 +108,51 @@ export function InventoryImportDialog({
     (row) => row.action === "adjust" && row.difference !== 0,
   ).length;
 
+  function resetPreparedImport() {
+    setFileName("");
+    setFileErrors([]);
+    setRows([]);
+    setSummary(null);
+    setImportError(null);
+    setProgress({ completed: 0, total: 0 });
+    if (inputRef.current) inputRef.current.value = "";
+  }
+
+  function changeDestinationType(nextType: "company" | "agent") {
+    setDestinationType(nextType);
+    setSelectedAgentId("");
+    resetPreparedImport();
+  }
+
+  function changeAgent(agentId: string) {
+    setSelectedAgentId(agentId);
+    resetPreparedImport();
+  }
+
   async function handleFile(file: File | undefined) {
     if (!file) return;
+    if (!destination) {
+      setFileErrors(["Selecciona un agente antes de cargar el archivo."]);
+      return;
+    }
     setReading(true);
     setFileErrors([]);
     setRows([]);
     setSummary(null);
+    setImportError(null);
     setFileName(file.name);
     try {
       const parsed = await parseInventoryImportFile(file);
       setFileErrors(parsed.fileErrors);
       if (parsed.fileErrors.length === 0) {
-        setRows(buildInventoryImportPreview(parsed.rows, products, inventory));
+        setRows(
+          buildInventoryImportPreview(
+            parsed.rows,
+            products,
+            inventory,
+            destination,
+          ),
+        );
         setStep("preview");
       }
     } finally {
@@ -112,18 +168,22 @@ export function InventoryImportDialog({
   }
 
   async function handleImport() {
-    if (criticalErrorCount > 0 || rows.length === 0) return;
+    if (criticalErrorCount > 0 || rows.length === 0 || !destination) return;
     setImporting(true);
+    setImportError(null);
     setProgress({ completed: 0, total: rows.length });
     try {
       const result = await importInventoryRows(
         rows,
+        destination,
         { uid: actorUid, role: "admin" },
         (completed, total) => setProgress({ completed, total }),
       );
       setSummary(result);
       setStep("result");
-      if (result.rowsProcessed > 0) await onImported();
+      if (result.rowsProcessed > 0) await onImported(destination);
+    } catch (error) {
+      setImportError(getInventoryImportErrorMessage(error));
     } finally {
       setImporting(false);
     }
@@ -140,7 +200,7 @@ export function InventoryImportDialog({
         <header className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 bg-white px-5 py-5 sm:px-7">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">
-              Inventario de empresa
+              {destinationType === "company" ? "Inventario de empresa" : "Inventario de agente"}
             </p>
             <h2 className="mt-1 text-2xl font-bold tracking-tight text-slate-950" id="inventory-import-title">
               Importar inventario
@@ -176,17 +236,83 @@ export function InventoryImportDialog({
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-6 sm:px-7">
           {step === "file" ? (
             <div className="mx-auto max-w-3xl space-y-5">
+              <fieldset className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
+                <legend className="px-1 text-sm font-bold text-slate-950">
+                  Destino del inventario
+                </legend>
+                <p className="mt-1 text-sm leading-6 text-slate-600">
+                  El propietario se aplica a todas las filas del archivo y no modifica otros inventarios.
+                </p>
+                <div className="mt-4 grid grid-cols-2 gap-3" role="radiogroup">
+                  {(["company", "agent"] as const).map((type) => {
+                    const checked = destinationType === type;
+                    return (
+                      <label
+                        className={`cursor-pointer rounded-xl border px-4 py-3 transition focus-within:ring-2 focus-within:ring-emerald-600 ${checked ? "border-emerald-600 bg-emerald-50 text-emerald-950" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`}
+                        key={type}
+                      >
+                        <input
+                          checked={checked}
+                          className="sr-only"
+                          name="inventory-import-destination"
+                          onChange={() => changeDestinationType(type)}
+                          type="radio"
+                          value={type}
+                        />
+                        <span className="block text-sm font-bold">
+                          {type === "company" ? "Empresa" : "Agente"}
+                        </span>
+                        <span className="mt-1 block text-xs leading-5 text-slate-500">
+                          {type === "company"
+                            ? "Inventario central de la empresa"
+                            : "Inventario independiente de un agente"}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+                {destinationType === "agent" ? (
+                  <div className="mt-4">
+                    <label className="text-sm font-semibold text-slate-800" htmlFor="inventory-import-agent">
+                      Seleccionar agente
+                    </label>
+                    <select
+                      className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-950 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                      id="inventory-import-agent"
+                      onChange={(event) => changeAgent(event.target.value)}
+                      required
+                      value={selectedAgentId}
+                    >
+                      <option value="">Selecciona un agente</option>
+                      {agents.map((agent) => (
+                        <option key={agent.uid} value={agent.uid}>
+                          {agent.displayName} — {agent.email}
+                        </option>
+                      ))}
+                    </select>
+                    {agents.length === 0 ? (
+                      <p className="mt-2 text-sm font-medium text-amber-800">
+                        No hay agentes activos disponibles para importar.
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+                <div className="mt-4 rounded-xl bg-slate-950 px-4 py-3 text-sm text-white">
+                  <span className="text-slate-300">Destino seleccionado:</span>{" "}
+                  <strong>{destinationLabel}</strong>
+                </div>
+              </fieldset>
               <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center sm:p-10">
                 <h3 className="text-lg font-bold text-slate-950">Selecciona tu archivo</h3>
                 <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-600">
                   Formatos XLSX, XLS y CSV. Máximo 200 filas. Columnas obligatorias: SKU, Producto, Stock inicial y Stock mínimo.
                 </p>
-                <label className="mt-5 inline-flex cursor-pointer rounded-xl bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-800 focus-within:ring-2 focus-within:ring-emerald-600 focus-within:ring-offset-2">
+                <label className={`mt-5 inline-flex rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition focus-within:ring-2 focus-within:ring-emerald-600 focus-within:ring-offset-2 ${destination ? "cursor-pointer bg-emerald-700 hover:bg-emerald-800" : "cursor-not-allowed bg-slate-400"}`}>
                   {reading ? "Leyendo archivo..." : "Seleccionar archivo"}
                   <input
                     accept={INVENTORY_IMPORT_ACCEPT}
                     className="sr-only"
-                    disabled={reading}
+                    disabled={reading || !destination}
                     onChange={(event) => void handleFile(event.target.files?.[0])}
                     ref={inputRef}
                     type="file"
@@ -219,6 +345,16 @@ export function InventoryImportDialog({
                 <button className="self-start rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600" onClick={() => setStep("file")} type="button">
                   Cambiar archivo
                 </button>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 sm:flex sm:items-center sm:justify-between sm:gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Destino</p>
+                  <p className="mt-1 font-bold text-slate-950">{destinationLabel}</p>
+                </div>
+                <p className="mt-2 text-sm text-slate-600 sm:mt-0 sm:text-right">
+                  {rows.length} {rows.length === 1 ? "producto se importará" : "productos se importarán"} al inventario de este propietario.
+                </p>
               </div>
 
               {criticalErrorCount > 0 ? (
@@ -291,8 +427,10 @@ export function InventoryImportDialog({
           {step === "confirm" ? (
             <div className="mx-auto max-w-3xl space-y-5">
               <div><h3 className="text-xl font-bold text-slate-950">Confirma la importación</h3><p className="mt-2 text-sm leading-6 text-slate-600">Las filas se procesarán individualmente. Cada cambio de cantidad será atómico con su movimiento; si una fila falla, se identificará en el resultado.</p></div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Destino</p><p className="mt-1 font-bold text-slate-950">{destinationLabel}</p></div>
               <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4"><div className="rounded-2xl border border-slate-200 p-4"><dt className="text-xs text-slate-500">Filas</dt><dd className="mt-1 text-2xl font-bold text-slate-950">{rows.length}</dd></div><div className="rounded-2xl border border-slate-200 p-4"><dt className="text-xs text-slate-500">Productos nuevos</dt><dd className="mt-1 text-2xl font-bold text-blue-700">{newProducts}</dd></div><div className="rounded-2xl border border-slate-200 p-4"><dt className="text-xs text-slate-500">Existentes</dt><dd className="mt-1 text-2xl font-bold text-slate-950">{existingProducts}</dd></div><div className="rounded-2xl border border-slate-200 p-4"><dt className="text-xs text-slate-500">Ajustes de stock</dt><dd className="mt-1 text-2xl font-bold text-amber-700">{stockAdjustments}</dd></div></dl>
               <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900"><strong>Importante:</strong> el stock mínimo se actualizará desde el archivo. Los inventarios existentes configurados como “No cambiar stock” conservarán su cantidad actual.</div>
+              {importError ? <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800" role="alert">{importError}</p> : null}
               {importing ? <div aria-live="polite"><div className="flex items-center justify-between text-sm font-medium text-slate-700"><span>Procesando filas...</span><span>{progress.completed}/{progress.total}</span></div><div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-emerald-600 transition-all" style={{ width: `${progress.total ? (progress.completed / progress.total) * 100 : 0}%` }} /></div></div> : null}
             </div>
           ) : null}
@@ -300,6 +438,7 @@ export function InventoryImportDialog({
           {step === "result" && summary ? (
             <div className="mx-auto max-w-4xl space-y-5">
               <div><h3 className="text-xl font-bold text-slate-950">Importación finalizada</h3><p className="mt-1 text-sm text-slate-600">Revisa el resumen de filas procesadas y cualquier error individual.</p></div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Destino</p><p className="mt-1 font-bold text-slate-950">{destinationLabel}</p></div>
               <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4"><div className="rounded-2xl border border-slate-200 p-4"><dt className="text-xs text-slate-500">Procesadas</dt><dd className="mt-1 text-2xl font-bold text-emerald-700">{summary.rowsProcessed}</dd></div><div className="rounded-2xl border border-slate-200 p-4"><dt className="text-xs text-slate-500">Productos nuevos</dt><dd className="mt-1 text-2xl font-bold text-slate-950">{summary.productsCreated}</dd></div><div className="rounded-2xl border border-slate-200 p-4"><dt className="text-xs text-slate-500">Inventarios creados</dt><dd className="mt-1 text-2xl font-bold text-slate-950">{summary.inventoriesCreated}</dd></div><div className="rounded-2xl border border-slate-200 p-4"><dt className="text-xs text-slate-500">Errores</dt><dd className={`mt-1 text-2xl font-bold ${summary.errors ? "text-red-700" : "text-slate-950"}`}>{summary.errors}</dd></div><div className="rounded-2xl border border-slate-200 p-4"><dt className="text-xs text-slate-500">Existentes</dt><dd className="mt-1 text-2xl font-bold text-slate-950">{summary.productsExisting}</dd></div><div className="rounded-2xl border border-slate-200 p-4"><dt className="text-xs text-slate-500">Ajustes entrada</dt><dd className="mt-1 text-2xl font-bold text-emerald-700">{summary.adjustmentsIn}</dd></div><div className="rounded-2xl border border-slate-200 p-4"><dt className="text-xs text-slate-500">Ajustes salida</dt><dd className="mt-1 text-2xl font-bold text-red-700">{summary.adjustmentsOut}</dd></div><div className="rounded-2xl border border-slate-200 p-4"><dt className="text-xs text-slate-500">Stock omitido</dt><dd className="mt-1 text-2xl font-bold text-slate-950">{summary.rowsSkipped}</dd></div></dl>
               {summary.errors > 0 ? <div className="rounded-2xl border border-red-200 bg-red-50 p-4"><p className="font-semibold text-red-900">Filas con error</p><ul className="mt-2 space-y-1 text-sm text-red-800">{summary.results.filter((result) => !result.success).map((result) => <li key={`${result.rowNumber}-${result.sku}`}>Fila {result.rowNumber} · {result.sku}: {result.error}</li>)}</ul></div> : <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900">Todas las filas se procesaron correctamente.</p>}
             </div>
