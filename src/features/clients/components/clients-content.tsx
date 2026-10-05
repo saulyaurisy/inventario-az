@@ -165,7 +165,7 @@ export function ClientsContent() {
   return (
     <section aria-labelledby="clients-title">
       <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-5 border-b border-slate-100 bg-gradient-to-br from-white to-emerald-50/70 p-6 sm:flex-row sm:items-center sm:justify-between sm:p-8">
+        <div className="flex flex-col gap-5 border-b border-slate-100 bg-linear-to-br from-white to-emerald-50/70 p-6 sm:flex-row sm:items-center sm:justify-between sm:p-8">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Directorio</p>
             <h2 className="mt-2 text-3xl font-bold tracking-tight text-slate-950" id="clients-title">Clientes</h2>
@@ -261,8 +261,8 @@ export function ClientsContent() {
                       <StatusBadge active={client.active} />
                     </div>
                     <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
-                      <div><dt className="text-xs text-slate-500">Teléfono</dt><dd className="mt-1 break-words font-medium text-slate-800">{client.phone || "No registrado"}</dd></div>
-                      <div><dt className="text-xs text-slate-500">Email</dt><dd className="mt-1 break-words font-medium text-slate-800">{client.email || "No registrado"}</dd></div>
+                      <div><dt className="text-xs text-slate-500">Teléfono</dt><dd className="mt-1 wrap-break-word font-medium text-slate-800">{client.phone || "No registrado"}</dd></div>
+                      <div><dt className="text-xs text-slate-500">Email</dt><dd className="mt-1 wrap-break-word font-medium text-slate-800">{client.email || "No registrado"}</dd></div>
                     </dl>
                     <div className="mt-4 border-t border-slate-100 pt-4">
                       <ClientActions busy={busyClientId === client.id} client={client} onDetail={() => setDetailClient(client)} onEdit={() => openEditDialog(client)} onToggle={() => void handleToggle(client)} />
