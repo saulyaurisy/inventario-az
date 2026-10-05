@@ -14,7 +14,7 @@ export const NAVIGATION_ITEMS: readonly NavigationItem[] = [
   { label: "Productos", shortLabel: "PR", href: "/products", roles: ["admin"] },
   { label: "Clientes", shortLabel: "CL", href: "/clients", roles: ALL_ROLES },
   { label: "Inventario", shortLabel: "IN", href: "/inventory", roles: ALL_ROLES },
-  { label: "Kardex", shortLabel: "KX", href: "/kardex", roles: ALL_ROLES },
+  { label: "Kardex", shortLabel: "KX", href: "/kardex", roles: ["admin"] },
   {
     label: "Reposiciones",
     shortLabel: "RE",

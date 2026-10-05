@@ -3,7 +3,7 @@ import { KardexContent } from "@/features/kardex";
 
 export default function KardexPage() {
   return (
-    <RoleRoute allowedRoles={["admin", "agent"]}>
+    <RoleRoute allowedRoles={["admin"]}>
       <KardexContent />
     </RoleRoute>
   );
